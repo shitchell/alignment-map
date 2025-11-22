@@ -9,7 +9,6 @@ from alignment_map.models import LineRange
 from alignment_map.suggest import BlockSuggestion, suggest_python_blocks
 from alignment_map.trace import collect_trace_data, trace_file_location
 from alignment_map.update import find_overlapping_blocks, suggest_overlap_strategy
-from alignment_map.review import collect_review_data, estimate_review_impact
 from alignment_map.graph import build_graph_data
 from alignment_map.parser import parse_alignment_map
 
@@ -272,101 +271,6 @@ class Class2:
             assert "Class2" in suggestions[0].name
         finally:
             temp_file.unlink()
-
-
-class TestReviewCommand:
-    """Tests for the review command."""
-
-    def test_review_file_with_alignments(self, temp_git_repo: Path) -> None:
-        """Test reviewing a file with alignments."""
-        alignment_map = """version: 1
-
-hierarchy:
-  requires_human:
-    - docs/IDENTITY.md
-  technical:
-    - docs/ARCHITECTURE.md
-
-mappings:
-  - file: src/module.py
-    blocks:
-      - name: MyClass
-        lines: 1-20
-        last_updated: 2024-01-15T10:00:00
-        aligned_with:
-          - docs/ARCHITECTURE.md
-          - docs/IDENTITY.md
-"""
-        arch_doc = """---
-last_reviewed: 2024-01-15T12:00:00
----
-
-# Architecture
-"""
-        identity_doc = """---
-last_reviewed: 2024-01-01T00:00:00
----
-
-# Identity
-"""
-
-        create_test_project(
-            temp_git_repo,
-            alignment_map,
-            {
-                "src/module.py": "class MyClass:\n    pass\n",
-                "docs/ARCHITECTURE.md": arch_doc,
-                "docs/IDENTITY.md": identity_doc,
-            },
-        )
-
-        alignment_map_obj = parse_alignment_map(temp_git_repo / ".alignment-map.yaml")
-        file_mapping = alignment_map_obj.get_file_mapping(Path("src/module.py"))
-
-        result = collect_review_data(
-            temp_git_repo,
-            alignment_map_obj,
-            Path("src/module.py"),
-            file_mapping,
-        )
-
-        assert result["file"] == "src/module.py"
-        assert len(result["blocks"]) == 1
-        assert result["review_requirements"]["total_docs"] == 2
-        assert result["review_requirements"]["requires_human"] == 1  # IDENTITY.md
-        assert result["review_requirements"]["requires_update"] == 1  # IDENTITY.md is stale
-        assert result["review_requirements"]["already_current"] == 1  # ARCHITECTURE.md
-
-    def test_estimate_review_impact(self) -> None:
-        """Test impact estimation."""
-        # Minimal impact - no docs
-        data = {
-            "review_requirements": {
-                "total_docs": 0,
-                "requires_human": 0,
-                "requires_update": 0,
-                "already_current": 0,
-            }
-        }
-        impact = estimate_review_impact(data)
-        assert impact["level"] == "minimal"
-
-        # High impact - requires human
-        data["review_requirements"]["total_docs"] = 2
-        data["review_requirements"]["requires_human"] = 1
-        impact = estimate_review_impact(data)
-        assert impact["level"] == "high"
-
-        # Medium impact - many docs to update
-        data["review_requirements"]["requires_human"] = 0
-        data["review_requirements"]["requires_update"] = 3
-        impact = estimate_review_impact(data)
-        assert impact["level"] == "medium"
-
-        # Low impact - few docs to update
-        data["review_requirements"]["requires_update"] = 1
-        impact = estimate_review_impact(data)
-        assert impact["level"] == "low"
 
 
 class TestGraphCommand:

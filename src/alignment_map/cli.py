@@ -50,10 +50,10 @@ def check(staged: bool, check_all: bool, files: tuple[str, ...], mapfile: Path |
     sys.exit(0)
 
 
-@main.command()
+@main.command("map-lint")
 @click.option("--fix-lines", is_flag=True, help="Attempt to auto-fix line numbers")
 @click.option("--mapfile", "-m", type=click.Path(exists=True, path_type=Path), help="Path to alignment map file")
-def validate(fix_lines: bool, mapfile: Path | None) -> None:
+def map_lint(fix_lines: bool, mapfile: Path | None) -> None:
     """Validate the alignment map itself."""
     try:
         project_root = find_project_root(mapfile=mapfile)
@@ -112,7 +112,7 @@ def validate(fix_lines: bool, mapfile: Path | None) -> None:
     sys.exit(0)
 
 
-@main.command()
+@main.command("block-add")
 @click.argument("file_path")
 @click.option("--block", required=True, help="Block name")
 @click.option("--lines", required=True, help="Line range (e.g., 1-50)")
@@ -122,7 +122,7 @@ def validate(fix_lines: bool, mapfile: Path | None) -> None:
 @click.option("--split", "strategy", flag_value="split", help="Split existing block")
 @click.option("--replace", "strategy", flag_value="replace", help="Replace existing block")
 @click.option("--mapfile", "-m", type=click.Path(exists=True, path_type=Path), help="Path to alignment map file")
-def update(
+def block_add(
     file_path: str,
     block: str,
     lines: str,
@@ -176,11 +176,11 @@ mappings: []
     sys.exit(0 if success else 1)
 
 
-@main.command()
+@main.command("block-suggest")
 @click.argument("file_path", required=False)
 @click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
 @click.option("--mapfile", "-m", type=click.Path(exists=True, path_type=Path), help="Path to alignment map file")
-def suggest(file_path: str | None, output_json: bool, mapfile: Path | None) -> None:
+def block_suggest(file_path: str | None, output_json: bool, mapfile: Path | None) -> None:
     """Suggest block boundaries for unmapped code."""
     try:
         project_root = find_project_root(mapfile=mapfile)
@@ -270,37 +270,10 @@ def trace(file_spec: str | None, output_json: bool, mapfile: Path | None) -> Non
     sys.exit(0 if result else 1)
 
 
-@main.command()
-@click.argument("file_path")
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-@click.option("--mapfile", "-m", type=click.Path(exists=True, path_type=Path), help="Path to alignment map file")
-def review(file_path: str, output_json: bool, mapfile: Path | None) -> None:
-    """Pre-flight check showing what docs would need review."""
-    try:
-        project_root = find_project_root(mapfile=mapfile)
-    except FileNotFoundError as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(2)
-
-    map_path = mapfile if mapfile else project_root / ".alignment-map.yaml"
-    if not map_path.exists():
-        click.echo("Error: Alignment map not found", err=True)
-        sys.exit(2)
-
-    from .review import review_file
-
-    result = review_file(project_root, map_path, Path(file_path), output_json)
-
-    if output_json and result:
-        click.echo(json.dumps(result, indent=2))
-
-    sys.exit(0 if result else 1)
-
-
-@main.command()
+@main.command("map-graph")
 @click.option("--format", "output_format", type=click.Choice(["dot", "ascii", "json"]), default="ascii")
 @click.option("--mapfile", "-m", type=click.Path(exists=True, path_type=Path), help="Path to alignment map file")
-def graph(output_format: str, mapfile: Path | None) -> None:
+def map_graph(output_format: str, mapfile: Path | None) -> None:
     """Visualize alignment relationships."""
     try:
         project_root = find_project_root(mapfile=mapfile)
@@ -326,19 +299,9 @@ def graph(output_format: str, mapfile: Path | None) -> None:
     sys.exit(0)
 
 
-@main.command("update-lines")
-@click.argument("file_path")
+@main.command("hook-install")
 @click.option("--mapfile", "-m", type=click.Path(exists=True, path_type=Path), help="Path to alignment map file")
-def update_lines(file_path: str, mapfile: Path | None) -> None:
-    """Update line numbers for a file after refactoring."""
-    # TODO: Implement line number updating
-    click.echo(f"Update-lines command not yet implemented for: {file_path}")
-    sys.exit(0)
-
-
-@main.command("install-hook")
-@click.option("--mapfile", "-m", type=click.Path(exists=True, path_type=Path), help="Path to alignment map file")
-def install_hook(mapfile: Path | None) -> None:
+def hook_install(mapfile: Path | None) -> None:
     """Install the pre-commit git hook."""
     try:
         project_root = find_project_root(mapfile=mapfile)
