@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2024-01-16T00:00:00
+last_reviewed: 2024-11-22T00:00:00
 ---
 
 # Alignment Map — Specification
@@ -240,26 +240,31 @@ Run coherency checks on staged changes (what the git hook calls).
 alignment-map check [--staged | --all | --files FILE...] [--json] [--mapfile FILE]
 ```
 
-### `alignment-map validate`
+### `alignment-map map-lint`
 
-Validate the alignment map itself:
+Validate the alignment map itself and generate fixes:
 - All referenced files exist
 - All line ranges are valid
 - All anchors resolve
-- No orphaned blocks (code exists but not in map)
+- Auto-detects line drift using AST parsing
 
 ```bash
-alignment-map validate [--fix-lines] [--mapfile FILE]
+alignment-map map-lint [--apply] [--mapfile FILE]
 ```
 
-The `--fix-lines` flag attempts to auto-correct line numbers by finding the named blocks (using fuzzy matching on function/class names).
+Without `--apply`: Lints the map and writes suggested fixes to `.alignment-map.fixes`.
+With `--apply`: Applies auto-fixes from the `.alignment-map.fixes` file and shows context for manual fixes.
 
-### `alignment-map update`
+Fixes are categorized as:
+- **Auto-fixable**: Line drift, missing files without dependencies
+- **Manual**: Overlapping blocks, missing anchors, items with dependencies
 
-Add or modify a file/block mapping. Replaces the old `add` command to handle both creation and updates.
+### `alignment-map block-add`
+
+Add or modify a file/block mapping.
 
 ```bash
-alignment-map update FILE --block NAME --lines START-END --aligned-with DOC [--comment COMMENT] [--mapfile FILE]
+alignment-map block-add FILE --block NAME --lines START-END --aligned-with DOC [--comment COMMENT] [--mapfile FILE]
 ```
 
 **Overlap handling:**
@@ -283,12 +288,26 @@ Rationale:
 
 **Requires `--aligned-with`:** The command refuses to add blocks without explicit alignment to prevent orphaned code.
 
-### `alignment-map suggest`
+### `alignment-map block-touch`
+
+Update an existing block's metadata with smart line detection.
+
+```bash
+alignment-map block-touch FILE --name NAME --comment COMMENT [--mapfile FILE]
+```
+
+**What it does:**
+1. Finds the existing block by name
+2. Uses AST parsing to detect if the code has moved (line drift)
+3. Updates `last_updated` timestamp and comment
+4. Adjusts line numbers automatically if drift is detected
+
+### `alignment-map block-suggest`
 
 Suggest block boundaries for unmapped code.
 
 ```bash
-alignment-map suggest [FILE] [--mapfile FILE]
+alignment-map block-suggest [FILE] [--json] [--mapfile FILE]
 ```
 
 **What it does:**
@@ -304,7 +323,7 @@ Unmapped code in src/validate/checker.py:
   Lines 109-160: function check_aligned_document()
 
 To add these blocks, run:
-  alignment-map update src/validate/checker.py --block "check_file_change" --lines 37-85 --aligned-with <DOC>
+  alignment-map block-add src/validate/checker.py --block "check_file_change" --lines 37-85 --aligned-with <DOC>
 ```
 
 **Example output (AST fallback):**
@@ -356,23 +375,23 @@ alignment-map review FILE [--json] [--mapfile FILE]
 
 Useful before starting work on a file.
 
-### `alignment-map graph`
+### `alignment-map map-graph`
 
 Visualize alignment relationships.
 
 ```bash
-alignment-map graph [--format dot|ascii|json] [--mapfile FILE]
+alignment-map map-graph [--format dot|ascii|json] [--mapfile FILE]
 ```
 
-### `alignment-map update-lines`
+### `alignment-map hook-install`
 
-After refactoring, update line numbers for a file.
+Install the pre-commit git hook.
 
 ```bash
-alignment-map update-lines src/validate/validators/base.py [--mapfile FILE]
+alignment-map hook-install [--mapfile FILE]
 ```
 
-Attempts to find the named blocks and update their line ranges.
+Creates `.git/hooks/pre-commit` that calls `alignment-map check --staged`.
 
 ---
 
@@ -393,7 +412,7 @@ ALIGNMENT CHECK FAILED
 This file has no entry in .alignment-map.yaml
 
 To add it, run:
-  alignment-map add src/validate/validators/jira/new_validator.py
+  alignment-map block-add src/validate/validators/jira/new_validator.py --block "<name>" --lines 1-<end> --aligned-with <DOC>
 
 Or manually add to .alignment-map.yaml:
 
@@ -547,7 +566,7 @@ settings:
 
 ```bash
 # Install the pre-commit hook
-alignment-map install-hook [--mapfile FILE]
+alignment-map hook-install [--mapfile FILE]
 
 # This creates .git/hooks/pre-commit that calls alignment-map check --staged
 # If --mapfile is specified, the hook will use that path for the alignment map

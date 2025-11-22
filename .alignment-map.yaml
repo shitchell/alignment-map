@@ -1,12 +1,12 @@
 version: 1
 
-# This alignment map is used to test the tool against itself (dogfooding)
+# This alignment map enforces coherency for the alignment-map tool itself (dogfooding)
 
 hierarchy:
   requires_human:
-    - SPEC.md  # Core specification requires human review
+    - README.md  # Changes to identity/overview need human review
   technical:
-    - README.md
+    - SPEC.md
 
 settings:
   line_tolerance: 10
@@ -14,118 +14,417 @@ settings:
   require_complete_coverage: false  # Not enforcing full coverage yet
 
 mappings:
-  # Core models
+  # === Core Models ===
   - file: src/alignment_map/models.py
     blocks:
       - name: CheckResult enum
-        lines: 14-24
+        lines: 13-22
         last_updated: 2024-01-16T00:00:00
-        last_update_comment: "Initial implementation"
+        last_update_comment: "Pydantic migration with business logic"
         aligned_with:
           - SPEC.md#git-hook-behavior
 
-      - name: Block dataclass
-        lines: 43-54
+      - name: LineRange class
+        lines: 36-76
         last_updated: 2024-01-16T00:00:00
-        last_update_comment: "Initial implementation"
+        last_update_comment: "Pydantic migration with validation and overlap detection"
         aligned_with:
-          - SPEC.md#alignment-mapyaml-schema
+          - SPEC.md
 
-      - name: AlignmentMap dataclass
-        lines: 63-85
+      - name: Block class
+        lines: 79-96
         last_updated: 2024-01-16T00:00:00
-        last_update_comment: "Initial implementation"
+        last_update_comment: "Pydantic migration with business logic"
         aligned_with:
-          - SPEC.md#alignment-mapyaml-schema
+          - SPEC.md
 
-      - name: CheckFailure dataclass
-        lines: 100-112
+      - name: FileMapping class
+        lines: 99-213
         last_updated: 2024-01-16T00:00:00
-        last_update_comment: "Initial implementation"
+        last_update_comment: "Pydantic migration with validation and CRUD methods"
+        aligned_with:
+          - SPEC.md
+
+      - name: AlignmentMap class
+        lines: 231-421
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Pydantic migration with orchestrator methods"
+        aligned_with:
+          - SPEC.md
+
+      - name: CheckFailure class
+        lines: 442-451
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Pydantic migration"
         aligned_with:
           - SPEC.md#error-messages
 
-  # Core checker logic
-  - file: src/alignment_map/checker.py
-    blocks:
-      - name: check_staged_changes function
-        lines: 12-34
-        last_updated: 2024-01-16T00:00:00
-        last_update_comment: "Initial implementation"
-        aligned_with:
-          - SPEC.md#git-hook-behavior
-
-      - name: check_file_change function
-        lines: 37-85
-        last_updated: 2024-01-16T00:00:00
-        last_update_comment: "Initial implementation"
-        aligned_with:
-          - SPEC.md#git-hook-behavior
-
-      - name: check_aligned_document function
-        lines: 109-160
-        last_updated: 2024-01-16T00:00:00
-        last_update_comment: "Initial implementation"
-        aligned_with:
-          - SPEC.md#git-hook-behavior
-
-  # CLI commands
+  # === CLI Commands ===
   - file: src/alignment_map/cli.py
     blocks:
       - name: check command
-        lines: 24-53
+        lines: 28-56
         last_updated: 2024-01-16T00:00:00
-        last_update_comment: "Initial implementation"
+        last_update_comment: "CLI restructuring with block-*, map-*, hook-* prefixes"
         aligned_with:
           - SPEC.md#cli-commands
           - README.md#commands
 
-      - name: validate command
-        lines: 56-100
+      - name: map-lint command
+        lines: 59-177
         last_updated: 2024-01-16T00:00:00
-        last_update_comment: "Initial implementation"
+        last_update_comment: "Renamed from validate, added --apply workflow"
+        aligned_with:
+          - SPEC.md#cli-commands
+          - README.md#commands
+
+      - name: block-add command
+        lines: 179-256
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Renamed from update, handles overlap strategies"
+        aligned_with:
+          - SPEC.md#cli-commands
+          - README.md#commands
+
+      - name: block-touch command
+        lines: 258-297
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "New command for updating existing block metadata"
+        aligned_with:
+          - SPEC.md#cli-commands
+          - README.md#commands
+
+      - name: block-suggest command
+        lines: 300-336
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Renamed from suggest"
+        aligned_with:
+          - SPEC.md#cli-commands
+          - README.md#commands
+
+      - name: trace command
+        lines: 339-391
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Context printing for file/line locations"
         aligned_with:
           - SPEC.md#cli-commands
 
-      - name: install-hook command
-        lines: 147-180
+      - name: map-graph command
+        lines: 394-420
         last_updated: 2024-01-16T00:00:00
-        last_update_comment: "Initial implementation"
+        last_update_comment: "Renamed from graph"
+        aligned_with:
+          - SPEC.md#cli-commands
+          - README.md#commands
+
+      - name: hook-install command
+        lines: 423-468
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Renamed from install-hook"
+        aligned_with:
+          - SPEC.md#installation
+          - README.md#quick-start
+
+  # === Core Checker Logic ===
+  - file: src/alignment_map/checker.py
+    blocks:
+      - name: check_staged_changes function
+        lines: 11-30
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Core hook logic"
+        aligned_with:
+          - SPEC.md#git-hook-behavior
+
+      - name: check_file_change function
+        lines: 33-100
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Per-file alignment checking"
+        aligned_with:
+          - SPEC.md#git-hook-behavior
+
+      - name: check_aligned_document function
+        lines: 131-196
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Document staleness checking"
+        aligned_with:
+          - SPEC.md#git-hook-behavior
+
+      - name: generate suggestions
+        lines: 213-253
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Suggestion generation for failures"
+        aligned_with:
+          - SPEC.md#error-messages
+
+  # === Lint and Auto-fix ===
+  - file: src/alignment_map/lint.py
+    blocks:
+      - name: lint_alignment_map function
+        lines: 17-208
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Main linting logic with auto/manual fix detection"
+        aligned_with:
+          - SPEC.md#cli-commands
+
+      - name: detect_line_drift function
+        lines: 211-276
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "AST-based line drift detection"
+        aligned_with:
+          - SPEC.md#fuzzy-line-matching
+
+      - name: apply_fixes_file function
+        lines: 293-396
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Auto-fix application from .alignment-map.fixes"
+        aligned_with:
+          - SPEC.md#cli-commands
+
+  # === Output Formatting ===
+  - file: src/alignment_map/output.py
+    blocks:
+      - name: print_check_results function
+        lines: 20-38
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Main result output"
+        aligned_with:
+          - SPEC.md#error-messages
+
+      - name: print_stale_docs function
+        lines: 98-130
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Stale document output"
+        aligned_with:
+          - SPEC.md#error-messages
+
+      - name: print_human_escalation function
+        lines: 133-167
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Human escalation output"
+        aligned_with:
+          - SPEC.md#error-messages
+
+      - name: print_manual_fix_context function
+        lines: 170-251
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Context-rich manual fix output"
+        aligned_with:
+          - SPEC.md#error-messages
+
+      - name: print_block_modification_trace function
+        lines: 311-421
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Trace output after block modifications"
+        aligned_with:
+          - SPEC.md#cli-commands
+
+  # === Update/Add Command Logic ===
+  - file: src/alignment_map/update.py
+    blocks:
+      - name: update_block function
+        lines: 20-122
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Main block add/update logic"
+        aligned_with:
+          - SPEC.md#cli-commands
+
+      - name: handle_block_overlap function
+        lines: 139-192
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Overlap handling with strategy suggestions"
+        aligned_with:
+          - SPEC.md#cli-commands
+
+      - name: overlap strategies
+        lines: 244-406
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "extend, split, replace strategies"
+        aligned_with:
+          - SPEC.md#cli-commands
+
+  # === Suggest Command Logic ===
+  - file: src/alignment_map/suggest.py
+    blocks:
+      - name: suggest_blocks function
+        lines: 31-75
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Main suggestion logic"
+        aligned_with:
+          - SPEC.md#cli-commands
+
+      - name: suggest_python_blocks function
+        lines: 113-181
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "AST-based Python block detection"
+        aligned_with:
+          - SPEC.md#cli-commands
+
+      - name: print_suggestions function
+        lines: 386-436
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Suggestion output formatting"
+        aligned_with:
+          - SPEC.md#cli-commands
+
+  # === Touch Command Logic ===
+  - file: src/alignment_map/touch.py
+    blocks:
+      - name: touch_block function
+        lines: 14-112
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Update existing block metadata with smart line detection"
+        aligned_with:
+          - SPEC.md#cli-commands
+
+      - name: find_block_current_location function
+        lines: 115-164
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "AST-based line detection for moved code"
+        aligned_with:
+          - SPEC.md#fuzzy-line-matching
+
+  # === Graph Visualization ===
+  - file: src/alignment_map/graph.py
+    blocks:
+      - name: generate_graph function
+        lines: 14-41
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Main graph generation"
+        aligned_with:
+          - SPEC.md#cli-commands
+
+      - name: build_graph_data function
+        lines: 44-130
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Graph data structure building"
+        aligned_with:
+          - SPEC.md#cli-commands
+
+      - name: generate_ascii_graph function
+        lines: 202-301
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "ASCII tree visualization"
+        aligned_with:
+          - SPEC.md#cli-commands
+
+  # === Trace Command Logic ===
+  - file: src/alignment_map/trace.py
+    blocks:
+      - name: trace_file_location function
+        lines: 16-74
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Main trace logic"
+        aligned_with:
+          - SPEC.md#cli-commands
+
+      - name: collect_trace_data function
+        lines: 77-179
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Trace data collection"
+        aligned_with:
+          - SPEC.md#cli-commands
+
+      - name: print_trace_output function
+        lines: 226-332
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Trace output formatting"
+        aligned_with:
+          - SPEC.md#cli-commands
+
+  # === Document Parsing ===
+  - file: src/alignment_map/parser.py
+    blocks:
+      - name: extract_document_section function
+        lines: 16-68
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Markdown section extraction"
+        aligned_with:
+          - SPEC.md#document-format
+
+      - name: extract_last_reviewed function
+        lines: 71-88
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Frontmatter/comment timestamp extraction"
+        aligned_with:
+          - SPEC.md#document-format
+
+  # === Git Operations ===
+  - file: src/alignment_map/git.py
+    blocks:
+      - name: get_staged_changes function
+        lines: 9-27
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Git staged changes retrieval"
+        aligned_with:
+          - SPEC.md#git-hook-behavior
+
+      - name: find_project_root function
+        lines: 102-144
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Project root detection with mapfile support"
+        aligned_with:
+          - SPEC.md#project-root-detection
+
+  # === Documentation ===
+  - file: README.md
+    blocks:
+      - name: Overview
+        lines: 1-18
+        last_reviewed: 2024-11-22T00:00:00
+        aligned_with:
+          - SPEC.md#goals
+
+      - name: Quick Start
+        lines: 19-29
+        last_reviewed: 2024-11-22T00:00:00
         aligned_with:
           - SPEC.md#installation
 
-  # Output formatting
-  - file: src/alignment_map/output.py
-    blocks:
-      - name: print_stale_docs function
-        lines: 70-110
-        last_updated: 2024-01-16T00:00:00
-        last_update_comment: "Initial implementation"
+      - name: Commands
+        lines: 71-88
+        last_reviewed: 2024-11-22T00:00:00
         aligned_with:
-          - SPEC.md#example-stale-technical-doc
+          - SPEC.md#cli-commands
 
-      - name: print_human_escalation function
-        lines: 113-150
-        last_updated: 2024-01-16T00:00:00
-        last_update_comment: "Initial implementation"
-        aligned_with:
-          - SPEC.md#example-human-escalation-required
-
-  # Intentionally broken fixtures for testing
-  - file: tests/fixtures/broken.py
+  - file: SPEC.md
     blocks:
-      - name: Broken unmapped code
-        lines: 1-30
-        last_updated: 2020-01-01T00:00:00
-        last_update_comment: "Intentionally stale for testing"
+      - name: Goals
+        id: goals
+        lines: 11-19
+        last_reviewed: 2024-11-22T00:00:00
         aligned_with:
-          - tests/fixtures/BROKEN.md#broken-code
+          - README.md#overview
 
-  - file: tests/fixtures/BROKEN.md
-    blocks:
-      - name: Broken documentation
-        id: broken-code
-        lines: 1-30
-        last_reviewed: 2019-01-01T00:00:00
+      - name: Alignment Map YAML Schema
+        lines: 64-142
+        last_reviewed: 2024-11-22T00:00:00
         aligned_with:
-          - SPEC.md#nonexistent-anchor  # Intentionally broken reference
+          - src/alignment_map/models.py
+
+      - name: Git Hook Behavior
+        id: git-hook-behavior
+        lines: 171-225
+        last_reviewed: 2024-11-22T00:00:00
+        aligned_with:
+          - src/alignment_map/checker.py
+
+      - name: CLI Commands
+        id: cli-commands
+        lines: 229-376
+        last_reviewed: 2024-11-22T00:00:00
+        aligned_with:
+          - src/alignment_map/cli.py
+
+      - name: Error Messages
+        id: error-messages
+        lines: 379-523
+        last_reviewed: 2024-11-22T00:00:00
+        aligned_with:
+          - src/alignment_map/output.py
+
+      - name: Installation
+        id: installation
+        lines: 544-564
+        last_reviewed: 2024-11-22T00:00:00
+        aligned_with:
+          - README.md#quick-start

@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2024-01-16T00:00:00
+last_reviewed: 2024-11-22T00:00:00
 ---
 
 # Alignment Map
@@ -22,7 +22,7 @@ Alignment Map ensures that when code changes, related documentation is reviewed.
 pip install -e .
 
 # Install git hook
-alignment-map install-hook
+alignment-map hook-install
 
 # Create initial alignment map
 touch .alignment-map.yaml
@@ -75,16 +75,25 @@ last_reviewed: 2024-01-15T10:30:00
 alignment-map check --staged
 
 # Validate the alignment map
-alignment-map validate
+alignment-map map-lint
 
-# Add a file to the map (interactive)
-alignment-map add src/new_file.py
+# Apply auto-fixes from map-lint
+alignment-map map-lint --apply
+
+# Add or update a block mapping
+alignment-map block-add src/file.py --block "MyClass" --lines 10-50 --aligned-with SPEC.md#section
+
+# Update existing block metadata with smart line detection
+alignment-map block-touch src/file.py --name "MyClass" --comment "Description of change"
 
 # Suggest blocks for unmapped code
-alignment-map suggest src/file.py
+alignment-map block-suggest src/file.py
 
 # Visualize relationships
-alignment-map graph
+alignment-map map-graph
+
+# Print context for a file/line location
+alignment-map trace src/file.py:45
 ```
 
 ## How It Works
