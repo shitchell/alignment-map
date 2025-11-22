@@ -155,3 +155,90 @@ def is_file_staged(project_root: Path, file_path: Path) -> bool:
     )
     staged_files = [f.strip() for f in result.stdout.strip().split("\n")]
     return str(file_path) in staged_files
+
+
+def get_tracked_files(project_root: Path) -> list[Path]:
+    """Get all files tracked by git."""
+    result = subprocess.run(
+        ["git", "ls-files"],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return [Path(f.strip()) for f in result.stdout.strip().split("\n") if f.strip()]
+
+
+def load_gitignore_patterns(project_root: Path) -> list[str]:
+    """Load patterns from .gitignore file."""
+    gitignore_path = project_root / ".gitignore"
+    if not gitignore_path.exists():
+        return []
+
+    patterns = []
+    for line in gitignore_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        patterns.append(line)
+    return patterns
+
+
+def should_ignore_file(
+    file_path: Path,
+    ignore_patterns: list[str],
+    gitignore_patterns: list[str] | None = None,
+) -> bool:
+    """Check if a file should be ignored."""
+    from fnmatch import fnmatch
+    path_str = str(file_path)
+
+    def matches_pattern(path: str, pattern: str) -> bool:
+        """Check if path matches pattern with ** support."""
+        # Handle ** patterns by checking if any part of the path matches
+        if "**" in pattern:
+            # For patterns like "**/tests/**", check if 'tests' is in the path
+            parts = pattern.split("**")
+            if len(parts) == 2:
+                prefix, suffix = parts
+                prefix = prefix.rstrip("/")
+                suffix = suffix.lstrip("/")
+
+                # Check if pattern is directory-based like "**/tests/**"
+                if prefix == "" and suffix == "":
+                    return False
+                elif prefix == "":
+                    # Pattern like "**/tests/**" - check if any path component matches
+                    if suffix:
+                        middle = suffix.split("/")[0] if "/" in suffix else suffix
+                        if middle:
+                            path_parts = path.split("/")
+                            # Check if any directory in the path matches
+                            return any(fnmatch(part, middle) for part in path_parts[:-1]) or \
+                                   any(fnmatch(part, middle) for part in path_parts)
+                    return False
+                elif suffix == "":
+                    # Pattern like "tests/**"
+                    return path.startswith(prefix.rstrip("/") + "/") or fnmatch(path, prefix + "*")
+            elif len(parts) == 3 and parts[0] == "" and parts[2] == "":
+                # Pattern like "**/tests/**" with middle part
+                middle = parts[1].strip("/")
+                if middle:
+                    path_parts = path.split("/")
+                    return any(fnmatch(part, middle) for part in path_parts)
+            # For complex ** patterns, try direct fnmatch
+            return fnmatch(path, pattern)
+        else:
+            # Simple pattern - match against path or filename
+            return fnmatch(path, pattern) or fnmatch(Path(path).name, pattern)
+
+    for pattern in ignore_patterns:
+        if matches_pattern(path_str, pattern):
+            return True
+
+    if gitignore_patterns:
+        for pattern in gitignore_patterns:
+            if matches_pattern(path_str, pattern):
+                return True
+
+    return False

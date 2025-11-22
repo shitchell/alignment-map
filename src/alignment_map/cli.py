@@ -8,7 +8,7 @@ from typing import Literal
 
 import click
 
-from .checker import check_staged_changes
+from .checker import check_files, check_staged_changes
 from .git import find_project_root, get_repo_root
 from .output import (
     print_block_modification_trace,
@@ -64,10 +64,11 @@ def main(ctx: click.Context) -> None:
 
 @main.command()
 @click.option("--staged", is_flag=True, default=True, help="Check staged changes (default)")
+@click.option("--tracked", "check_tracked", is_flag=True, help="Check all tracked files")
 @click.option("--all", "check_all", is_flag=True, help="Check all files")
 @click.option("--files", multiple=True, help="Check specific files")
 @click.option("--mapfile", "-m", type=click.Path(exists=True, path_type=Path), help="Path to alignment map file")
-def check(staged: bool, check_all: bool, files: tuple[str, ...], mapfile: Path | None) -> None:
+def check(staged: bool, check_tracked: bool, check_all: bool, files: tuple[str, ...], mapfile: Path | None) -> None:
     """Check alignment of code changes."""
     try:
         project_root = find_project_root(mapfile=mapfile)
@@ -82,10 +83,22 @@ def check(staged: bool, check_all: bool, files: tuple[str, ...], mapfile: Path |
         click.echo("\nCreate .alignment-map.yaml to define code-to-doc alignments.", err=True)
         sys.exit(2)
 
-    if check_all or files:
-        click.echo("Warning: --all and --files not yet implemented, checking staged changes", err=True)
+    # Determine mode
+    if check_tracked:
+        mode: Literal["staged", "tracked", "all", "files"] = "tracked"
+    elif check_all:
+        mode = "all"
+    elif files:
+        mode = "files"
+    else:
+        mode = "staged"
 
-    failures = check_staged_changes(project_root, map_path)
+    failures = check_files(
+        project_root,
+        map_path,
+        mode,
+        [Path(f) for f in files] if files else None,
+    )
     print_check_results(failures)
 
     if failures:

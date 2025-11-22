@@ -2,8 +2,15 @@
 
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
-from .git import get_staged_changes, is_file_staged
+from .git import (
+    get_staged_changes,
+    get_tracked_files,
+    is_file_staged,
+    load_gitignore_patterns,
+    should_ignore_file,
+)
 from .models import AlignmentMap, Block, CheckFailure, CheckResult, FileChange
 from .parser import extract_document_section, get_document_last_reviewed
 
@@ -17,15 +24,116 @@ def check_staged_changes(project_root: Path, map_path: Path) -> list[CheckFailur
     # Also check if the alignment map itself was updated
     map_updated = is_file_staged(project_root, map_path.relative_to(project_root))
 
+    # Load gitignore patterns if needed
+    gitignore_patterns = None
+    if alignment_map.settings.respect_gitignore:
+        gitignore_patterns = load_gitignore_patterns(project_root)
+
     for file_change in staged_changes:
         # Skip the alignment map file itself
         if file_change.file_path == map_path.relative_to(project_root):
+            continue
+
+        # Skip ignored files
+        if should_ignore_file(
+            file_change.file_path,
+            alignment_map.settings.ignore,
+            gitignore_patterns,
+        ):
             continue
 
         file_failures = check_file_change(
             project_root, alignment_map, file_change, map_updated
         )
         failures.extend(file_failures)
+
+    return failures
+
+
+def check_files(
+    project_root: Path,
+    map_path: Path,
+    mode: Literal["staged", "tracked", "all", "files"] = "staged",
+    specific_files: list[Path] | None = None,
+) -> list[CheckFailure]:
+    """Check files for alignment issues.
+
+    Args:
+        project_root: Root directory of the project
+        map_path: Path to the alignment map file
+        mode: "staged", "tracked", "all", or "files"
+        specific_files: Files to check when mode="files"
+
+    Returns:
+        List of check failures
+    """
+    alignment_map = AlignmentMap.load(map_path)
+    failures: list[CheckFailure] = []
+
+    # Get files based on mode
+    if mode == "staged":
+        file_changes = get_staged_changes(project_root)
+        # Also check if the alignment map itself was updated
+        map_updated = is_file_staged(project_root, map_path.relative_to(project_root))
+    elif mode == "tracked":
+        tracked = get_tracked_files(project_root)
+        file_changes = [FileChange(file_path=f, changed_lines=[]) for f in tracked]
+        map_updated = True  # Treat as if map is updated for non-staged checks
+    elif mode == "all":
+        # All files in project
+        all_files = list(project_root.rglob("*"))
+        file_changes = [
+            FileChange(file_path=f.relative_to(project_root), changed_lines=[])
+            for f in all_files
+            if f.is_file()
+        ]
+        map_updated = True
+    else:  # mode == "files"
+        file_changes = [
+            FileChange(file_path=Path(f), changed_lines=[])
+            for f in (specific_files or [])
+        ]
+        map_updated = True
+
+    # Load gitignore patterns if needed
+    gitignore_patterns = None
+    if alignment_map.settings.respect_gitignore:
+        gitignore_patterns = load_gitignore_patterns(project_root)
+
+    for file_change in file_changes:
+        # Skip the alignment map file itself
+        try:
+            if file_change.file_path == map_path.relative_to(project_root):
+                continue
+        except ValueError:
+            # map_path is not relative to project_root
+            pass
+
+        # Skip ignored files
+        if should_ignore_file(
+            file_change.file_path,
+            alignment_map.settings.ignore,
+            gitignore_patterns,
+        ):
+            continue
+
+        # For non-staged modes without changed_lines, only check if file is mapped
+        if mode != "staged" and not file_change.changed_lines:
+            file_mapping = alignment_map.get_file_mapping(file_change.file_path)
+            if file_mapping is None:
+                failures.append(
+                    CheckFailure(
+                        result=CheckResult.UNMAPPED_FILE,
+                        file_path=file_change.file_path,
+                        message=f"File not in alignment map: {file_change.file_path}",
+                        suggestion=generate_file_mapping_suggestion(file_change.file_path),
+                    )
+                )
+        else:
+            file_failures = check_file_change(
+                project_root, alignment_map, file_change, map_updated
+            )
+            failures.extend(file_failures)
 
     return failures
 

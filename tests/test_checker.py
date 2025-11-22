@@ -429,3 +429,341 @@ class TestEdgeCases:
         )
 
         assert len(failures) == 0
+
+
+class TestIgnoreSettings:
+    """Tests for ignore and respect_gitignore settings."""
+
+    def test_ignore_pattern_skips_file(
+        self,
+        temp_git_repo: Path,
+        sample_code: str,
+        sample_doc_with_review: str,
+    ) -> None:
+        """Files matching ignore patterns are not checked."""
+        # Create map with ignore pattern for test files
+        alignment_map = """version: 1
+
+hierarchy:
+  requires_human: []
+  technical:
+    - docs/**/*.md
+
+settings:
+  ignore:
+    - "**/*.test.py"
+    - "**/tests/**"
+
+mappings:
+  - file: src/module.py
+    blocks:
+      - name: MyClass
+        lines: 1-20
+        last_updated: 2024-01-15T10:00:00
+        last_update_comment: "Initial implementation"
+        aligned_with:
+          - docs/ARCHITECTURE.md#my-class
+"""
+        create_test_project(
+            temp_git_repo,
+            alignment_map,
+            {
+                "src/module.py": sample_code,
+                "docs/ARCHITECTURE.md": sample_doc_with_review,
+            },
+        )
+
+        # Add a test file that should be ignored
+        test_code = '''"""Test module."""
+
+def test_something() -> None:
+    assert True
+'''
+        stage_new_file(temp_git_repo, "tests/test_module.py", test_code)
+
+        # Run check
+        failures = check_staged_changes(
+            temp_git_repo,
+            temp_git_repo / ".alignment-map.yaml",
+        )
+
+        # Should have no failures since test file is ignored
+        assert len(failures) == 0
+
+    def test_respect_gitignore_true(
+        self,
+        temp_git_repo: Path,
+        sample_code: str,
+        sample_doc_with_review: str,
+        sample_alignment_map: str,
+    ) -> None:
+        """Files in .gitignore are skipped when respect_gitignore=true."""
+        create_test_project(
+            temp_git_repo,
+            sample_alignment_map,
+            {
+                "src/module.py": sample_code,
+                "docs/ARCHITECTURE.md": sample_doc_with_review,
+            },
+        )
+
+        # Create .gitignore
+        (temp_git_repo / ".gitignore").write_text("*.generated.py\n")
+
+        # Add a generated file that should be ignored
+        # Use git add -f to force-add gitignored files
+        generated_code = '''"""Generated code."""
+x = 1
+'''
+        import subprocess
+        full_path = temp_git_repo / "src" / "auto.generated.py"
+        full_path.write_text(generated_code)
+        subprocess.run(
+            ["git", "add", "-f", "src/auto.generated.py"],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+        )
+
+        # Run check
+        failures = check_staged_changes(
+            temp_git_repo,
+            temp_git_repo / ".alignment-map.yaml",
+        )
+
+        # Should have no failures since generated file matches gitignore
+        assert len(failures) == 0
+
+    def test_respect_gitignore_false(
+        self,
+        temp_git_repo: Path,
+        sample_code: str,
+        sample_doc_with_review: str,
+    ) -> None:
+        """Files in .gitignore are checked when respect_gitignore=false."""
+        alignment_map = """version: 1
+
+hierarchy:
+  requires_human: []
+  technical:
+    - docs/**/*.md
+
+settings:
+  respect_gitignore: false
+
+mappings:
+  - file: src/module.py
+    blocks:
+      - name: MyClass
+        lines: 1-20
+        last_updated: 2024-01-15T10:00:00
+        last_update_comment: "Initial implementation"
+        aligned_with:
+          - docs/ARCHITECTURE.md#my-class
+"""
+        create_test_project(
+            temp_git_repo,
+            alignment_map,
+            {
+                "src/module.py": sample_code,
+                "docs/ARCHITECTURE.md": sample_doc_with_review,
+            },
+        )
+
+        # Create .gitignore
+        (temp_git_repo / ".gitignore").write_text("*.generated.py\n")
+
+        # Add a generated file - since respect_gitignore is false, it should be checked
+        # Use git add -f to force-add gitignored files
+        generated_code = '''"""Generated code."""
+x = 1
+'''
+        import subprocess
+        full_path = temp_git_repo / "src" / "auto.generated.py"
+        full_path.write_text(generated_code)
+        subprocess.run(
+            ["git", "add", "-f", "src/auto.generated.py"],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+        )
+
+        # Run check
+        failures = check_staged_changes(
+            temp_git_repo,
+            temp_git_repo / ".alignment-map.yaml",
+        )
+
+        # Should have UNMAPPED_FILE failure since gitignore is not respected
+        assert len(failures) == 1
+        assert failures[0].result == CheckResult.UNMAPPED_FILE
+        assert "auto.generated.py" in str(failures[0].file_path)
+
+
+class TestCheckModes:
+    """Tests for different check modes (staged, tracked, all, files)."""
+
+    def test_check_tracked_only_checks_tracked(
+        self,
+        temp_git_repo: Path,
+        sample_code: str,
+        sample_doc_with_review: str,
+        sample_alignment_map: str,
+    ) -> None:
+        """--tracked only checks git-tracked files."""
+        from alignment_map.checker import check_files
+
+        create_test_project(
+            temp_git_repo,
+            sample_alignment_map,
+            {
+                "src/module.py": sample_code,
+                "docs/ARCHITECTURE.md": sample_doc_with_review,
+            },
+        )
+
+        # Add an untracked file (not staged, not committed)
+        untracked_code = '''"""Untracked module."""
+def foo() -> None:
+    pass
+'''
+        (temp_git_repo / "src" / "untracked.py").write_text(untracked_code)
+
+        # Run check in tracked mode
+        failures = check_files(
+            temp_git_repo,
+            temp_git_repo / ".alignment-map.yaml",
+            mode="tracked",
+        )
+
+        # Should not report the untracked file
+        untracked_failures = [f for f in failures if "untracked.py" in str(f.file_path)]
+        assert len(untracked_failures) == 0
+
+    def test_check_all_checks_everything(
+        self,
+        temp_git_repo: Path,
+        sample_code: str,
+        sample_doc_with_review: str,
+        sample_alignment_map: str,
+    ) -> None:
+        """--all checks all files including untracked."""
+        from alignment_map.checker import check_files
+
+        create_test_project(
+            temp_git_repo,
+            sample_alignment_map,
+            {
+                "src/module.py": sample_code,
+                "docs/ARCHITECTURE.md": sample_doc_with_review,
+            },
+        )
+
+        # Add an untracked file (not staged, not committed)
+        untracked_code = '''"""Untracked module."""
+def foo() -> None:
+    pass
+'''
+        (temp_git_repo / "src" / "untracked.py").write_text(untracked_code)
+
+        # Run check in all mode
+        failures = check_files(
+            temp_git_repo,
+            temp_git_repo / ".alignment-map.yaml",
+            mode="all",
+        )
+
+        # Should report the untracked file as unmapped
+        untracked_failures = [f for f in failures if "untracked.py" in str(f.file_path)]
+        assert len(untracked_failures) == 1
+        assert untracked_failures[0].result == CheckResult.UNMAPPED_FILE
+
+    def test_check_files_specific(
+        self,
+        temp_git_repo: Path,
+        sample_code: str,
+        sample_doc_with_review: str,
+        sample_alignment_map: str,
+    ) -> None:
+        """--files checks only specified files."""
+        from alignment_map.checker import check_files
+
+        create_test_project(
+            temp_git_repo,
+            sample_alignment_map,
+            {
+                "src/module.py": sample_code,
+                "docs/ARCHITECTURE.md": sample_doc_with_review,
+            },
+        )
+
+        # Add another unmapped file
+        other_code = '''"""Other module."""
+def bar() -> None:
+    pass
+'''
+        (temp_git_repo / "src" / "other.py").write_text(other_code)
+
+        # Run check with specific files
+        failures = check_files(
+            temp_git_repo,
+            temp_git_repo / ".alignment-map.yaml",
+            mode="files",
+            specific_files=[Path("src/other.py")],
+        )
+
+        # Should only report the specified file
+        assert len(failures) == 1
+        assert "other.py" in str(failures[0].file_path)
+        assert failures[0].result == CheckResult.UNMAPPED_FILE
+
+    def test_tracked_mode_respects_ignore(
+        self,
+        temp_git_repo: Path,
+        sample_code: str,
+        sample_doc_with_review: str,
+    ) -> None:
+        """Tracked mode respects ignore patterns."""
+        from alignment_map.checker import check_files
+
+        alignment_map = """version: 1
+
+hierarchy:
+  requires_human: []
+  technical:
+    - docs/**/*.md
+
+settings:
+  ignore:
+    - "**/tests/**"
+
+mappings:
+  - file: src/module.py
+    blocks:
+      - name: MyClass
+        lines: 1-20
+        last_updated: 2024-01-15T10:00:00
+        last_update_comment: "Initial implementation"
+        aligned_with:
+          - docs/ARCHITECTURE.md#my-class
+"""
+        create_test_project(
+            temp_git_repo,
+            alignment_map,
+            {
+                "src/module.py": sample_code,
+                "docs/ARCHITECTURE.md": sample_doc_with_review,
+                "tests/test_main.py": "# test file",
+            },
+        )
+
+        # Run check in tracked mode
+        failures = check_files(
+            temp_git_repo,
+            temp_git_repo / ".alignment-map.yaml",
+            mode="tracked",
+        )
+
+        # Should not report test file as it's ignored
+        test_failures = [f for f in failures if "test_main.py" in str(f.file_path)]
+        assert len(test_failures) == 0

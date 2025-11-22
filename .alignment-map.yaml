@@ -12,6 +12,9 @@ settings:
   line_tolerance: 10
   fuzzy_match: true
   require_complete_coverage: false  # Not enforcing full coverage yet
+  respect_gitignore: true
+  ignore:
+    - "**/tests/**"  # Test files don't require alignment mapping
 
 mappings:
   # === Core Models ===
@@ -45,8 +48,15 @@ mappings:
         aligned_with:
           - SPEC.md
 
+      - name: Settings class
+        lines: 223-230
+        last_updated: 2025-11-22T00:00:00
+        last_update_comment: "Add ignore and respect_gitignore settings"
+        aligned_with:
+          - SPEC.md#configuration
+
       - name: AlignmentMap class
-        lines: 231-421
+        lines: 233-423
         last_updated: 2024-01-16T00:00:00
         last_update_comment: "Pydantic migration with orchestrator methods"
         aligned_with:
@@ -62,10 +72,10 @@ mappings:
   # === CLI Commands ===
   - file: src/alignment_map/cli.py
     blocks:
-      - name: hook check helper
-        lines: 21-49
+      - name: imports and hook check helper
+        lines: 1-49
         last_updated: 2025-11-22T00:00:00
-        last_update_comment: "Add warning when git hook not installed"
+        last_update_comment: "Add check_files import and warning when git hook not installed"
         aligned_with:
           - SPEC.md#installation
           - README.md#quick-start
@@ -78,15 +88,15 @@ mappings:
           - SPEC.md#cli-commands
 
       - name: check command
-        lines: 65-93
-        last_updated: 2024-01-16T00:00:00
-        last_update_comment: "CLI restructuring with block-*, map-*, hook-* prefixes"
+        lines: 65-106
+        last_updated: 2025-11-22T00:00:00
+        last_update_comment: "Add --tracked option and check_files mode support"
         aligned_with:
           - SPEC.md#cli-commands
           - README.md#commands
 
       - name: map-lint command
-        lines: 96-213
+        lines: 109-226
         last_updated: 2024-01-16T00:00:00
         last_update_comment: "Renamed from validate, added --apply workflow"
         aligned_with:
@@ -94,7 +104,7 @@ mappings:
           - README.md#commands
 
       - name: block-add command
-        lines: 216-292
+        lines: 229-305
         last_updated: 2024-01-16T00:00:00
         last_update_comment: "Renamed from update, handles overlap strategies"
         aligned_with:
@@ -102,7 +112,7 @@ mappings:
           - README.md#commands
 
       - name: block-touch command
-        lines: 295-334
+        lines: 308-347
         last_updated: 2024-01-16T00:00:00
         last_update_comment: "New command for updating existing block metadata"
         aligned_with:
@@ -110,7 +120,7 @@ mappings:
           - README.md#commands
 
       - name: block-suggest command
-        lines: 337-373
+        lines: 350-386
         last_updated: 2024-01-16T00:00:00
         last_update_comment: "Renamed from suggest"
         aligned_with:
@@ -118,14 +128,14 @@ mappings:
           - README.md#commands
 
       - name: trace command
-        lines: 376-428
+        lines: 389-441
         last_updated: 2024-01-16T00:00:00
         last_update_comment: "Context printing for file/line locations"
         aligned_with:
           - SPEC.md#cli-commands
 
       - name: map-graph command
-        lines: 431-457
+        lines: 444-470
         last_updated: 2024-01-16T00:00:00
         last_update_comment: "Renamed from graph"
         aligned_with:
@@ -133,7 +143,7 @@ mappings:
           - README.md#commands
 
       - name: hook-install command
-        lines: 460-505
+        lines: 473-518
         last_updated: 2024-01-16T00:00:00
         last_update_comment: "Renamed from install-hook"
         aligned_with:
@@ -173,29 +183,36 @@ mappings:
   # === Core Checker Logic ===
   - file: src/alignment_map/checker.py
     blocks:
-      - name: check_staged_changes function
-        lines: 11-30
-        last_updated: 2024-01-16T00:00:00
-        last_update_comment: "Core hook logic"
+      - name: imports and check_staged_changes function
+        lines: 1-50
+        last_updated: 2025-11-22T00:00:00
+        last_update_comment: "Add ignore and gitignore filtering"
         aligned_with:
           - SPEC.md#git-hook-behavior
 
+      - name: check_files function
+        lines: 53-141
+        last_updated: 2025-11-22T00:00:00
+        last_update_comment: "New multi-mode check function (staged/tracked/all/files)"
+        aligned_with:
+          - SPEC.md#cli-commands
+
       - name: check_file_change function
-        lines: 33-100
+        lines: 144-211
         last_updated: 2024-01-16T00:00:00
         last_update_comment: "Per-file alignment checking"
         aligned_with:
           - SPEC.md#git-hook-behavior
 
       - name: check_aligned_document function
-        lines: 131-196
+        lines: 242-308
         last_updated: 2024-01-16T00:00:00
         last_update_comment: "Document staleness checking"
         aligned_with:
           - SPEC.md#git-hook-behavior
 
       - name: generate suggestions
-        lines: 213-253
+        lines: 324-364
         last_updated: 2024-01-16T00:00:00
         last_update_comment: "Suggestion generation for failures"
         aligned_with:
@@ -410,6 +427,27 @@ mappings:
         aligned_with:
           - SPEC.md#project-root-detection
 
+      - name: get_tracked_files function
+        lines: 158-170
+        last_updated: 2025-11-22T00:00:00
+        last_update_comment: "Get all git-tracked files for --tracked mode"
+        aligned_with:
+          - SPEC.md#cli-commands
+
+      - name: load_gitignore_patterns function
+        lines: 171-185
+        last_updated: 2025-11-22T00:00:00
+        last_update_comment: "Load patterns from .gitignore"
+        aligned_with:
+          - SPEC.md#configuration
+
+      - name: should_ignore_file function
+        lines: 186-245
+        last_updated: 2025-11-22T00:00:00
+        last_update_comment: "Check file against ignore and gitignore patterns"
+        aligned_with:
+          - SPEC.md#configuration
+
   # === Documentation ===
   - file: README.md
     blocks:
@@ -460,17 +498,24 @@ mappings:
 
       - name: CLI Commands
         id: cli-commands
-        lines: 229-376
-        last_reviewed: 2024-11-22T00:00:00
+        lines: 229-395
+        last_reviewed: 2025-11-22T00:00:00
         aligned_with:
           - src/alignment_map/cli.py
 
       - name: Error Messages
         id: error-messages
-        lines: 379-523
+        lines: 398-542
         last_reviewed: 2024-11-22T00:00:00
         aligned_with:
           - src/alignment_map/output.py
+
+      - name: Configuration
+        id: configuration
+        lines: 599-637
+        last_reviewed: 2025-11-22T00:00:00
+        aligned_with:
+          - src/alignment_map/models.py
 
       - name: Installation
         id: installation

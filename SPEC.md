@@ -237,8 +237,14 @@ All commands also support `--mapfile FILE` / `-m FILE` to specify the path to th
 Run coherency checks on staged changes (what the git hook calls).
 
 ```bash
-alignment-map check [--staged | --all | --files FILE...] [--json] [--mapfile FILE]
+alignment-map check [--staged | --tracked | --all | --files FILE...] [--json] [--mapfile FILE]
 ```
+
+Options:
+- `--staged` - Check only staged changes (default, used by git hook)
+- `--tracked` - Check all git-tracked files
+- `--all` - Check all files in project directory
+- `--files` - Check specific files
 
 ### `alignment-map map-lint`
 
@@ -606,10 +612,13 @@ settings:
   # Enable fuzzy matching of block names to code symbols
   fuzzy_match: true
 
-  # Files to ignore (globs)
+  # Files to ignore (globs) - exempt from alignment mapping
   ignore:
     - "**/*.test.py"
     - "**/fixtures/**"
+
+  # Also skip files matching .gitignore patterns (default: true)
+  respect_gitignore: true
 
   # Require all code files to be mapped
   require_complete_coverage: true
@@ -617,6 +626,14 @@ settings:
   # Custom escalation message
   escalation_message: "Tag @tech-lead in PR for review"
 ```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `line_tolerance` | `10` | Lines can shift by this much before warning |
+| `fuzzy_match` | `true` | Match block names to code symbols |
+| `ignore` | `[]` | Glob patterns for files exempt from alignment mapping |
+| `respect_gitignore` | `true` | Also skip files matching .gitignore patterns |
+| `require_complete_coverage` | `false` | Require all code files to be mapped |
 
 ---
 

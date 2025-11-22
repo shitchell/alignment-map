@@ -226,6 +226,8 @@ class Settings(BaseModel):
     line_tolerance: int = 10
     fuzzy_match: bool = True
     require_complete_coverage: bool = False
+    ignore: list[str] = Field(default_factory=list)
+    respect_gitignore: bool = True
 
 
 class AlignmentMap(BaseModel):
