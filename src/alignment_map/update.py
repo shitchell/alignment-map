@@ -27,8 +27,12 @@ def update_block(
     aligned_with: list[str],
     comment: str | None = None,
     strategy: OverlapStrategy | None = None,
-) -> bool:
-    """Update or add a block in the alignment map."""
+) -> tuple[bool, LineRange | None, list[str] | None]:
+    """Update or add a block in the alignment map.
+
+    Returns:
+        Tuple of (success, final_lines, final_aligned_with) for trace printing.
+    """
     console = Console()
 
     # Parse existing map
@@ -36,13 +40,13 @@ def update_block(
         alignment_map = parse_alignment_map(map_path)
     except Exception as e:
         console.print(f"[red]Error parsing alignment map: {e}[/red]")
-        return False
+        return False, None, None
 
     # Check if file exists
     full_file_path = project_root / file_path
     if not full_file_path.exists():
         console.print(f"[red]Error: File does not exist: {file_path}[/red]")
-        return False
+        return False, None, None
 
     # Check line range validity
     file_lines = len(full_file_path.read_text().split("\n"))
@@ -50,7 +54,7 @@ def update_block(
         console.print(
             f"[red]Error: Line range {lines} exceeds file length ({file_lines} lines)[/red]"
         )
-        return False
+        return False, None, None
 
     # Find or create file mapping
     file_mapping = alignment_map.get_file_mapping(file_path)
@@ -88,7 +92,7 @@ def update_block(
             yaml.dump(map_data, f, default_flow_style=False, sort_keys=False)
 
         console.print(f"[green]✓ Added new file mapping for {file_path}[/green]")
-        return True
+        return True, lines, aligned_with
 
     # Check for overlaps with existing blocks
     overlapping_blocks = find_overlapping_blocks(file_mapping.blocks, lines)
@@ -142,8 +146,12 @@ def handle_block_overlap(
     comment: str | None,
     overlapping_blocks: list[Block],
     strategy: OverlapStrategy | None,
-) -> bool:
-    """Handle overlapping blocks based on strategy."""
+) -> tuple[bool, LineRange | None, list[str] | None]:
+    """Handle overlapping blocks based on strategy.
+
+    Returns:
+        Tuple of (success, final_lines, final_aligned_with) for trace printing.
+    """
     console = Console()
 
     # Show overlap details
@@ -167,7 +175,7 @@ def handle_block_overlap(
         console.print("  [cyan]--replace[/cyan]   Replace existing block entirely")
         console.print()
         console.print("[yellow]Re-run with one of the above flags to proceed.[/yellow]")
-        return False
+        return False, None, None
 
     # Apply the strategy
     if strategy == "extend":
@@ -184,7 +192,7 @@ def handle_block_overlap(
         )
     else:
         console.print(f"[red]Invalid strategy: {strategy}[/red]")
-        return False
+        return False, None, None
 
 
 def suggest_overlap_strategy(
@@ -244,8 +252,12 @@ def apply_extend_strategy(
     aligned_with: list[str],
     comment: str | None,
     existing_block: Block,
-) -> bool:
-    """Extend an existing block to include new lines."""
+) -> tuple[bool, LineRange | None, list[str] | None]:
+    """Extend an existing block to include new lines.
+
+    Returns:
+        Tuple of (success, final_lines, final_aligned_with) for trace printing.
+    """
     console = Console()
 
     # Calculate extended range
@@ -257,6 +269,9 @@ def apply_extend_strategy(
     with open(map_path) as f:
         map_data = yaml.safe_load(f)
 
+    # Merge aligned_with lists (unique)
+    merged_aligned = sorted(list(set(existing_block.aligned_with) | set(aligned_with)))
+
     # Find and update the block
     for mapping in map_data["mappings"]:
         if mapping["file"] == str(file_path):
@@ -266,11 +281,7 @@ def apply_extend_strategy(
                     block["lines"] = str(extended_range)
                     block["last_updated"] = datetime.now().isoformat()
                     block["last_update_comment"] = comment or f"Extended block from {existing_block.lines} to {extended_range}"
-
-                    # Merge aligned_with lists (unique)
-                    existing_aligned = set(block.get("aligned_with", []))
-                    existing_aligned.update(aligned_with)
-                    block["aligned_with"] = sorted(list(existing_aligned))
+                    block["aligned_with"] = merged_aligned
                     break
 
     # Write back
@@ -278,7 +289,7 @@ def apply_extend_strategy(
         yaml.dump(map_data, f, default_flow_style=False, sort_keys=False)
 
     console.print(f"[green]✓ Extended block '{existing_block.name}' to lines {extended_range}[/green]")
-    return True
+    return True, extended_range, merged_aligned
 
 
 def apply_split_strategy(
@@ -289,8 +300,13 @@ def apply_split_strategy(
     aligned_with: list[str],
     comment: str | None,
     existing_block: Block,
-) -> bool:
-    """Split an existing block at the boundary."""
+) -> tuple[bool, LineRange | None, list[str] | None]:
+    """Split an existing block at the boundary.
+
+    Returns:
+        Tuple of (success, final_lines, final_aligned_with) for trace printing.
+        Returns the new block's lines and aligned_with (not the split parts).
+    """
     console = Console()
 
     # Determine split points
@@ -348,7 +364,7 @@ def apply_split_strategy(
         yaml.dump(map_data, f, default_flow_style=False, sort_keys=False)
 
     console.print(f"[green]✓ Split block '{existing_block.name}' into {len(splits)} blocks[/green]")
-    return True
+    return True, lines, aligned_with
 
 
 def apply_replace_strategy(
@@ -359,8 +375,12 @@ def apply_replace_strategy(
     aligned_with: list[str],
     comment: str | None,
     existing_block: Block,
-) -> bool:
-    """Replace an existing block entirely."""
+) -> tuple[bool, LineRange | None, list[str] | None]:
+    """Replace an existing block entirely.
+
+    Returns:
+        Tuple of (success, final_lines, final_aligned_with) for trace printing.
+    """
     console = Console()
 
     # Update the YAML file
@@ -387,7 +407,7 @@ def apply_replace_strategy(
         yaml.dump(map_data, f, default_flow_style=False, sort_keys=False)
 
     console.print(f"[green]✓ Replaced block '{existing_block.name}' with '{block_name}' (lines {lines})[/green]")
-    return True
+    return True, lines, aligned_with
 
 
 def add_new_block_to_file(
@@ -397,8 +417,12 @@ def add_new_block_to_file(
     lines: LineRange,
     aligned_with: list[str],
     comment: str | None,
-) -> bool:
-    """Add a new block to an existing file mapping."""
+) -> tuple[bool, LineRange | None, list[str] | None]:
+    """Add a new block to an existing file mapping.
+
+    Returns:
+        Tuple of (success, final_lines, final_aligned_with) for trace printing.
+    """
     console = Console()
 
     # Update the YAML file
@@ -422,4 +446,4 @@ def add_new_block_to_file(
         yaml.dump(map_data, f, default_flow_style=False, sort_keys=False)
 
     console.print(f"[green]✓ Added new block '{block_name}' (lines {lines}) to {file_path}[/green]")
-    return True
+    return True, lines, aligned_with

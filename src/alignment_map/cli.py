@@ -9,7 +9,7 @@ import click
 
 from .checker import check_staged_changes
 from .git import find_project_root, get_repo_root
-from .output import print_check_results
+from .output import print_block_modification_trace, print_check_results
 
 
 @click.group()
@@ -162,7 +162,7 @@ mappings: []
         click.echo(f"Error: Invalid line range format: {e}", err=True)
         sys.exit(2)
 
-    success = update_block(
+    success, final_lines, final_aligned = update_block(
         project_root,
         map_path,
         Path(file_path),
@@ -172,6 +172,58 @@ mappings: []
         comment,
         strategy,
     )
+
+    # Print trace if successful
+    if success and final_lines and final_aligned is not None:
+        print_block_modification_trace(
+            project_root,
+            Path(file_path),
+            block,
+            final_lines,
+            final_aligned,
+        )
+
+    sys.exit(0 if success else 1)
+
+
+@main.command("block-touch")
+@click.argument("file_path")
+@click.option("--name", required=True, help="Block name to update")
+@click.option("--comment", required=True, help="Description of the change")
+@click.option("--mapfile", "-m", type=click.Path(exists=True, path_type=Path), help="Path to alignment map file")
+def block_touch(file_path: str, name: str, comment: str, mapfile: Path | None) -> None:
+    """Update an existing block's metadata with smart line detection."""
+    try:
+        project_root = find_project_root(mapfile=mapfile)
+    except FileNotFoundError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(2)
+
+    map_path = mapfile if mapfile else project_root / ".alignment-map.yaml"
+
+    if not map_path.exists():
+        click.echo(f"Error: Alignment map not found: {map_path}", err=True)
+        sys.exit(2)
+
+    from .touch import touch_block
+
+    success, new_lines, aligned_with = touch_block(
+        project_root,
+        map_path,
+        Path(file_path),
+        name,
+        comment,
+    )
+
+    # Print trace if successful
+    if success and new_lines and aligned_with is not None:
+        print_block_modification_trace(
+            project_root,
+            Path(file_path),
+            name,
+            new_lines,
+            aligned_with,
+        )
 
     sys.exit(0 if success else 1)
 

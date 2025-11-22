@@ -1,10 +1,12 @@
 """Output formatting for alignment check results."""
 
+from pathlib import Path
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from .models import CheckFailure, CheckResult
+from .models import CheckFailure, CheckResult, LineRange
 
 console = Console()
 
@@ -157,3 +159,116 @@ def print_human_escalation(failures: list[CheckFailure]) -> None:
 
         console.print(Panel(instructions, title="Human Escalation Required", border_style="red"))
         console.print()
+
+
+def print_block_modification_trace(
+    project_root: Path,
+    file_path: Path,
+    block_name: str,
+    lines: LineRange,
+    aligned_with: list[str],
+) -> None:
+    """Print trace output after a block modification.
+
+    Shows:
+    1. The actual code block (read lines from file)
+    2. Aligned document sections (extract and print them)
+    3. Instruction to review alignment
+    """
+    from .parser import extract_document_section, get_document_last_reviewed
+
+    # Print code block header
+    console.print(f"\n[bold cyan]{'━' * 3} Code Block {'━' * 3}[/bold cyan]")
+
+    # Read and print the code lines
+    full_file_path = project_root / file_path
+    if full_file_path.exists():
+        file_lines = full_file_path.read_text().split("\n")
+        # Show up to 20 lines or full block if smaller
+        start_idx = lines.start - 1  # Convert to 0-indexed
+        end_idx = min(lines.end, len(file_lines))
+        show_lines = file_lines[start_idx:end_idx]
+
+        # Limit display to first 15 and last 3 lines if too long
+        if len(show_lines) > 20:
+            for i, line in enumerate(show_lines[:15]):
+                line_num = lines.start + i
+                console.print(f"[dim]{line_num:4}|[/dim] {line}")
+            console.print("[dim]...[/dim]")
+            for i, line in enumerate(show_lines[-3:]):
+                line_num = lines.end - 2 + i
+                console.print(f"[dim]{line_num:4}|[/dim] {line}")
+        else:
+            for i, line in enumerate(show_lines):
+                line_num = lines.start + i
+                console.print(f"[dim]{line_num:4}|[/dim] {line}")
+    else:
+        console.print(f"[yellow]File not found: {full_file_path}[/yellow]")
+
+    # Print aligned documents
+    if aligned_with:
+        console.print(f"\n[bold cyan]{'━' * 3} Aligned Documents {'━' * 3}[/bold cyan]")
+
+        for aligned_ref in aligned_with:
+            # Parse the reference
+            if "#" in aligned_ref:
+                doc_path_str, anchor = aligned_ref.split("#", 1)
+            else:
+                doc_path_str = aligned_ref
+                anchor = ""
+
+            # Skip code references
+            if doc_path_str.startswith("src/") or ":" in aligned_ref:
+                console.print(f"[dim]{aligned_ref} (code reference)[/dim]")
+                continue
+
+            doc_path = project_root / doc_path_str
+
+            # Print document header
+            console.print(f"\n[yellow]{aligned_ref}[/yellow]")
+
+            if doc_path.exists():
+                # Get last_reviewed
+                last_reviewed = get_document_last_reviewed(doc_path)
+                if last_reviewed:
+                    console.print(f"  [dim]last_reviewed: {last_reviewed.isoformat()}[/dim]")
+                else:
+                    console.print("  [dim]last_reviewed: NOT SET[/dim]")
+
+                # Extract and print section
+                if anchor:
+                    section = extract_document_section(doc_path, anchor)
+                    if section:
+                        # Print section content with indentation
+                        console.print()
+                        section_lines = section.content.split("\n")
+                        # Limit to first 15 lines
+                        if len(section_lines) > 15:
+                            for line in section_lines[:15]:
+                                console.print(f"  {line}")
+                            console.print("  [dim]...[/dim]")
+                        else:
+                            for line in section_lines:
+                                console.print(f"  {line}")
+                    else:
+                        console.print(f"  [yellow]Section '{anchor}' not found in document[/yellow]")
+                else:
+                    # No anchor, show first few lines
+                    content = doc_path.read_text()
+                    first_lines = content.split("\n")[:10]
+                    console.print()
+                    for line in first_lines:
+                        console.print(f"  {line}")
+                    if len(content.split("\n")) > 10:
+                        console.print("  [dim]...[/dim]")
+            else:
+                console.print(f"  [red]Document does not exist![/red]")
+
+    # Print footer with instructions
+    console.print(f"\n[bold cyan]{'━' * 56}[/bold cyan]")
+    console.print(
+        "\n[yellow]Review the above to ensure alignment. If docs need updating,[/yellow]"
+    )
+    console.print(
+        "[yellow]modify them and update their last_reviewed timestamps.[/yellow]\n"
+    )
