@@ -602,7 +602,7 @@ mappings:
         assert len(fixes) == 1
         assert fixes[0]["issue"] == "missing_file"
         assert fixes[0]["file"] == "src/missing.py"
-        assert fixes[0]["action"] == "remove_file"
+        assert fixes[0]["action"] == "auto"  # auto since no references
 
     def test_lint_detects_line_drift(self, temp_git_repo: Path) -> None:
         """Test that lint detects when code has moved."""
@@ -657,7 +657,7 @@ mappings:
 
         assert len(fixes) == 1
         assert fixes[0]["issue"] == "missing_file"
-        assert fixes[0]["action"] == "remove_file"
+        assert fixes[0]["action"] == "auto"  # auto since no references
 
     def test_lint_detects_invalid_lines(self, temp_git_repo: Path) -> None:
         """Test that lint detects invalid line ranges."""
@@ -812,10 +812,11 @@ def my_function():
         assert fixes_path.exists()
 
         # Apply the fixes
-        actions = apply_fixes_file(temp_git_repo, map_path, fixes_path)
+        actions, skipped = apply_fixes_file(temp_git_repo, map_path, fixes_path)
 
         assert len(actions) == 1
         assert "1-3" in actions[0] and "4-5" in actions[0]
+        assert len(skipped) == 0
 
         # Verify the map was updated
         import yaml
@@ -855,10 +856,11 @@ mappings:
         write_fixes_file(fixes_path, fixes)
 
         # Apply the fixes
-        actions = apply_fixes_file(temp_git_repo, map_path, fixes_path)
+        actions, skipped = apply_fixes_file(temp_git_repo, map_path, fixes_path)
 
         assert len(actions) == 1
         assert "src/missing.py" in actions[0]
+        assert len(skipped) == 0
 
         # Verify the map was updated
         import yaml
@@ -979,3 +981,387 @@ class MyClass:
         assert "missing_file" in issue_types
         # At least one other issue
         assert len(issue_types) >= 2
+
+
+class TestLintAutoManual:
+    """Tests for auto vs manual fix detection."""
+
+    def test_line_drift_auto_when_no_overlap(self, temp_git_repo: Path) -> None:
+        """Line drift is auto-fixable when no overlap."""
+        alignment_map = """version: 1
+
+mappings:
+  - file: src/module.py
+    blocks:
+      - name: my_function function
+        lines: 1-3
+        aligned_with: []
+"""
+        # Function is actually at lines 4-6
+        code_content = """# Header
+# Comment
+
+def my_function():
+    return 42
+"""
+        create_test_project(
+            temp_git_repo,
+            alignment_map,
+            {"src/module.py": code_content},
+        )
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+
+        assert len(fixes) == 1
+        assert fixes[0]["issue"] == "line_drift"
+        assert fixes[0]["action"] == "auto"
+
+    def test_line_drift_manual_when_overlap(self, temp_git_repo: Path) -> None:
+        """Line drift is manual when it would cause overlap."""
+        alignment_map = """version: 1
+
+mappings:
+  - file: src/module.py
+    blocks:
+      - name: func1 function
+        lines: 1-3
+        aligned_with: []
+      - name: func2 function
+        lines: 10-12
+        aligned_with: []
+"""
+        # func1 has moved to overlap with func2's range
+        code_content = """# Header
+# Comment
+# More comments
+# Even more
+# Lots of comments
+# So many
+# Keep going
+# Almost there
+
+def func1():
+    return 1
+
+def func2():
+    return 2
+"""
+        create_test_project(
+            temp_git_repo,
+            alignment_map,
+            {"src/module.py": code_content},
+        )
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+
+        # Find the func1 drift fix
+        func1_fixes = [f for f in fixes if f.get("block") == "func1 function"]
+        assert len(func1_fixes) == 1
+        assert func1_fixes[0]["issue"] == "line_drift"
+        assert func1_fixes[0]["action"] == "manual"
+        assert "overlap" in func1_fixes[0]["reason"].lower()
+        assert "overlap_with" in func1_fixes[0]
+
+    def test_missing_file_auto_when_no_refs(self, temp_git_repo: Path) -> None:
+        """Missing file is auto-fixable when nothing references it."""
+        alignment_map = """version: 1
+
+mappings:
+  - file: src/missing.py
+    blocks:
+      - name: MissingBlock
+        lines: 1-10
+        aligned_with: []
+"""
+        create_test_project(temp_git_repo, alignment_map, {})
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+
+        assert len(fixes) == 1
+        assert fixes[0]["issue"] == "missing_file"
+        assert fixes[0]["action"] == "auto"
+
+    def test_missing_file_manual_when_has_refs(self, temp_git_repo: Path) -> None:
+        """Missing file is manual when other things reference it."""
+        alignment_map = """version: 1
+
+mappings:
+  - file: src/missing.py
+    blocks:
+      - name: MissingBlock
+        lines: 1-10
+        aligned_with: []
+  - file: src/other.py
+    blocks:
+      - name: OtherBlock
+        lines: 1-5
+        aligned_with:
+          - src/missing.py
+"""
+        create_test_project(
+            temp_git_repo,
+            alignment_map,
+            {"src/other.py": "# code\n" * 5},
+        )
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+
+        # Should have missing_file fix that's manual
+        missing_file_fix = [f for f in fixes if f["issue"] == "missing_file"][0]
+        assert missing_file_fix["action"] == "manual"
+        assert "orphaned_refs" in missing_file_fix
+        assert len(missing_file_fix["orphaned_refs"]) == 1
+        assert "OtherBlock" in missing_file_fix["orphaned_refs"][0]
+
+    def test_invalid_lines_auto_when_no_deps(self, temp_git_repo: Path) -> None:
+        """Invalid lines is auto-fixable when no dependencies."""
+        alignment_map = """version: 1
+
+mappings:
+  - file: src/module.py
+    blocks:
+      - name: MyBlock
+        lines: 1-100
+        aligned_with: []
+"""
+        # File only has 5 lines
+        code_content = "# line\n" * 5
+        create_test_project(
+            temp_git_repo,
+            alignment_map,
+            {"src/module.py": code_content},
+        )
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+
+        assert len(fixes) == 1
+        assert fixes[0]["issue"] == "invalid_lines"
+        assert fixes[0]["action"] == "auto"
+
+    def test_invalid_lines_manual_when_has_alignments(self, temp_git_repo: Path) -> None:
+        """Invalid lines is manual when block has alignments."""
+        alignment_map = """version: 1
+
+mappings:
+  - file: src/module.py
+    blocks:
+      - name: MyBlock
+        lines: 1-100
+        aligned_with:
+          - docs/ARCHITECTURE.md#section
+"""
+        # File only has 5 lines
+        code_content = "# line\n" * 5
+        doc_content = "# Architecture\n\n## Section\n\nContent."
+        create_test_project(
+            temp_git_repo,
+            alignment_map,
+            {
+                "src/module.py": code_content,
+                "docs/ARCHITECTURE.md": doc_content,
+            },
+        )
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+
+        assert len(fixes) == 1
+        assert fixes[0]["issue"] == "invalid_lines"
+        assert fixes[0]["action"] == "manual"
+        assert "aligns_with" in fixes[0]
+
+    def test_missing_anchor_always_manual(self, temp_git_repo: Path) -> None:
+        """Missing anchor is always manual."""
+        alignment_map = """version: 1
+
+mappings:
+  - file: src/module.py
+    blocks:
+      - name: MyClass
+        lines: 1-2
+        aligned_with:
+          - docs/ARCHITECTURE.md#nonexistent
+"""
+        code_content = "class MyClass:\n    pass\n"
+        doc_content = "# Architecture\n\n## Other Section\n\nContent."
+        create_test_project(
+            temp_git_repo,
+            alignment_map,
+            {
+                "src/module.py": code_content,
+                "docs/ARCHITECTURE.md": doc_content,
+            },
+        )
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+
+        assert len(fixes) == 1
+        assert fixes[0]["issue"] == "missing_anchor"
+        assert fixes[0]["action"] == "manual"
+        assert "reason" in fixes[0]
+
+    def test_apply_only_applies_auto(self, temp_git_repo: Path) -> None:
+        """--apply only applies fixes with action: auto."""
+        alignment_map = """version: 1
+
+mappings:
+  - file: src/module.py
+    blocks:
+      - name: my_function function
+        lines: 1-3
+        aligned_with: []
+      - name: other_function function
+        lines: 10-12
+        aligned_with:
+          - docs/missing.md#section
+"""
+        # Function at wrong lines (will be auto-fixable)
+        # Also has missing anchor (will be manual)
+        code_content = """# Header
+
+def my_function():
+    return 42
+
+def other_function():
+    return 99
+"""
+        create_test_project(
+            temp_git_repo,
+            alignment_map,
+            {"src/module.py": code_content},
+        )
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes_path = temp_git_repo / ".alignment-map.fixes"
+
+        # Run lint to generate fixes
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+        write_fixes_file(fixes_path, fixes)
+
+        # Should have both auto and manual fixes
+        auto_count = sum(1 for f in fixes if f.get("action") == "auto")
+        manual_count = sum(1 for f in fixes if f.get("action") == "manual")
+        assert auto_count >= 1
+        assert manual_count >= 1
+
+        # Apply the fixes
+        actions, skipped = apply_fixes_file(temp_git_repo, map_path, fixes_path)
+
+        # Should have applied auto fixes
+        assert len(actions) >= 1
+
+        # Should have skipped manual fixes
+        assert len(skipped) == manual_count
+
+    def test_apply_returns_skipped_manual_fixes(self, temp_git_repo: Path) -> None:
+        """--apply returns list of skipped manual fixes with context."""
+        alignment_map = """version: 1
+
+mappings:
+  - file: src/missing.py
+    blocks:
+      - name: Block1
+        lines: 1-10
+        aligned_with: []
+  - file: src/other.py
+    blocks:
+      - name: Block2
+        lines: 1-5
+        aligned_with:
+          - src/missing.py
+"""
+        create_test_project(
+            temp_git_repo,
+            alignment_map,
+            {"src/other.py": "# code\n" * 5},
+        )
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes_path = temp_git_repo / ".alignment-map.fixes"
+
+        # Run lint
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+        write_fixes_file(fixes_path, fixes)
+
+        # Apply
+        actions, skipped = apply_fixes_file(temp_git_repo, map_path, fixes_path)
+
+        # Should have skipped the missing_file fix because it has refs
+        assert len(skipped) >= 1
+        assert any(s.get("issue") == "missing_file" for s in skipped)
+        assert any("orphaned_refs" in s for s in skipped)
+
+    def test_fixes_file_format_includes_action(self, temp_git_repo: Path) -> None:
+        """Fixes file includes action field (auto/manual)."""
+        alignment_map = """version: 1
+
+mappings:
+  - file: src/missing.py
+    blocks:
+      - name: Block
+        lines: 1-10
+        aligned_with: []
+"""
+        create_test_project(temp_git_repo, alignment_map, {})
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes_path = temp_git_repo / ".alignment-map.fixes"
+
+        # Run lint
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+        write_fixes_file(fixes_path, fixes)
+
+        # Read fixes file
+        import yaml
+        with open(fixes_path) as f:
+            data = yaml.safe_load(f)
+
+        # Check format
+        assert "fixes" in data
+        assert len(data["fixes"]) == 1
+        assert "action" in data["fixes"][0]
+        assert data["fixes"][0]["action"] in ("auto", "manual")
+
+    def test_invalid_lines_manual_when_referenced(self, temp_git_repo: Path) -> None:
+        """Invalid lines is manual when block is referenced by others."""
+        alignment_map = """version: 1
+
+mappings:
+  - file: src/module.py
+    blocks:
+      - name: MyBlock
+        lines: 1-100
+        aligned_with: []
+  - file: src/other.py
+    blocks:
+      - name: OtherBlock
+        lines: 1-5
+        aligned_with:
+          - src/module.py#MyBlock
+"""
+        # File only has 5 lines
+        code_content = "# line\n" * 5
+        other_content = "# other\n" * 5
+        create_test_project(
+            temp_git_repo,
+            alignment_map,
+            {
+                "src/module.py": code_content,
+                "src/other.py": other_content,
+            },
+        )
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+
+        # Find the invalid_lines fix
+        invalid_fix = [f for f in fixes if f["issue"] == "invalid_lines"][0]
+        assert invalid_fix["action"] == "manual"
+        assert "referenced_by" in invalid_fix
+        assert any("OtherBlock" in ref for ref in invalid_fix["referenced_by"])

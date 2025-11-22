@@ -9,7 +9,12 @@ import click
 
 from .checker import check_staged_changes
 from .git import find_project_root, get_repo_root
-from .output import print_block_modification_trace, print_check_results
+from .output import (
+    print_block_modification_trace,
+    print_check_results,
+    print_lint_summary,
+    print_manual_fix_context,
+)
 
 
 @click.group()
@@ -73,6 +78,7 @@ def map_lint(apply_fixes: bool, mapfile: Path | None) -> None:
         sys.exit(2)
 
     from .lint import apply_fixes_file, lint_alignment_map, write_fixes_file
+    from .models import AlignmentMap
 
     if apply_fixes:
         # Apply mode - read and apply fixes from file
@@ -81,19 +87,43 @@ def map_lint(apply_fixes: bool, mapfile: Path | None) -> None:
             click.echo("\nRun 'alignment-map map-lint' first to generate fixes.", err=True)
             sys.exit(2)
 
-        actions = apply_fixes_file(project_root, map_path, fixes_path)
+        actions, skipped = apply_fixes_file(project_root, map_path, fixes_path)
 
         if actions:
             click.echo("Applied fixes:\n")
             for action in actions:
-                click.echo(f"  - {action}")
+                click.echo(f"  [green]+[/green] {action}", err=False)
             click.echo("")
+
+        # Show context for manual fixes
+        if skipped:
+            click.echo(f"\nSkipped {len(skipped)} manual fix(es):\n", err=True)
+
+            # Load alignment map for context
+            try:
+                alignment_map = AlignmentMap.load(map_path)
+                for fix in skipped:
+                    print_manual_fix_context(project_root, alignment_map, fix)
+            except Exception:
+                # Fallback to simple output if map can't be loaded
+                for fix in skipped:
+                    issue_type = fix.get("issue", "unknown")
+                    description = fix.get("description", "")
+                    reason = fix.get("reason", "")
+                    click.echo(f"  - [{issue_type}] {description}", err=True)
+                    if reason:
+                        click.echo(f"    Reason: {reason}", err=True)
 
         # Delete the fixes file after successful apply
         fixes_path.unlink()
         click.echo(f"Deleted {fixes_path}")
-        click.echo("\nFixes applied successfully")
-        sys.exit(0)
+
+        if skipped:
+            click.echo(f"\nAuto fixes applied. {len(skipped)} manual fix(es) require attention.")
+            sys.exit(1)  # Exit with error if there are manual fixes remaining
+        else:
+            click.echo("\nAll fixes applied successfully")
+            sys.exit(0)
 
     else:
         # Lint mode - check for issues and write fixes file
@@ -109,15 +139,39 @@ def map_lint(apply_fixes: bool, mapfile: Path | None) -> None:
         # Write fixes to file
         write_fixes_file(fixes_path, fixes)
 
+        # Categorize fixes
+        auto_fixes = [f for f in fixes if f.get("action") == "auto"]
+        manual_fixes = [f for f in fixes if f.get("action") == "manual"]
+
         # Print summary
         click.echo("Alignment map issues found:\n", err=True)
-        for fix in fixes:
-            issue_type = fix.get("issue", "unknown")
-            description = fix.get("description", "")
-            click.echo(f"  - [{issue_type}] {description}", err=True)
+
+        if auto_fixes:
+            click.echo(f"[green]Auto-fixable ({len(auto_fixes)}):[/green]", err=True)
+            for fix in auto_fixes:
+                issue_type = fix.get("issue", "unknown")
+                description = fix.get("description", "")
+                click.echo(f"  + [{issue_type}] {description}", err=True)
+            click.echo("")
+
+        if manual_fixes:
+            click.echo(f"[yellow]Requires manual review ({len(manual_fixes)}):[/yellow]", err=True)
+            for fix in manual_fixes:
+                issue_type = fix.get("issue", "unknown")
+                description = fix.get("description", "")
+                reason = fix.get("reason", "")
+                click.echo(f"  ! [{issue_type}] {description}", err=True)
+                if reason:
+                    click.echo(f"      Reason: {reason}", err=True)
 
         click.echo(f"\nFixes written to: {fixes_path}", err=True)
-        click.echo("Run 'alignment-map map-lint --apply' to apply these fixes.", err=True)
+
+        if auto_fixes:
+            click.echo("Run 'alignment-map map-lint --apply' to apply auto fixes.", err=True)
+
+        if manual_fixes:
+            click.echo(f"\n{len(manual_fixes)} issue(s) require manual review.", err=True)
+
         sys.exit(1)
 
 

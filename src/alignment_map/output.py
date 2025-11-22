@@ -161,6 +161,147 @@ def print_human_escalation(failures: list[CheckFailure]) -> None:
         console.print()
 
 
+def print_manual_fix_context(
+    project_root: Path,
+    alignment_map: "AlignmentMap",
+    fix: dict,
+) -> None:
+    """Print context-rich output for a manual fix."""
+    from .trace import build_document_hierarchy
+
+    console.print("\n[bold yellow]--- Manual Fix Required ---[/bold yellow]\n")
+
+    # Issue summary
+    console.print(f"[bold]Issue:[/bold] {fix.get('issue', 'unknown')}")
+    console.print(f"[bold]File:[/bold] {fix.get('file', 'N/A')}")
+    if fix.get('block'):
+        console.print(f"[bold]Block:[/bold] {fix['block']}")
+    if fix.get('reason'):
+        console.print(f"[bold]Reason:[/bold] {fix['reason']}")
+
+    # Additional context for different issue types
+    if fix.get('old_lines'):
+        console.print(f"[bold]Current Lines:[/bold] {fix['old_lines']}")
+    if fix.get('new_lines'):
+        console.print(f"[bold]Detected Lines:[/bold] {fix['new_lines']}")
+    if fix.get('overlap_with'):
+        console.print(f"[bold]Overlaps With:[/bold] {fix['overlap_with']}")
+
+    # Direct references
+    has_refs = (
+        fix.get('orphaned_refs') or
+        fix.get('aligns_with') or
+        fix.get('referenced_by')
+    )
+
+    if has_refs:
+        console.print("\n[bold]References:[/bold]")
+
+        if fix.get('aligns_with'):
+            for ref in fix['aligns_with']:
+                console.print(f"  -> {ref} [dim](this block aligns with)[/dim]")
+
+        if fix.get('orphaned_refs'):
+            for ref in fix['orphaned_refs']:
+                console.print(f"  <- {ref} [dim](references this file)[/dim]")
+
+        if fix.get('referenced_by'):
+            for ref in fix['referenced_by']:
+                console.print(f"  <- {ref} [dim](references this block)[/dim]")
+
+    # Build and show hierarchy for certain fix types
+    if fix.get('aligns_with'):
+        # Build aligned documents info for hierarchy
+        aligned_docs = []
+        for aligned_ref in fix['aligns_with']:
+            if "#" in aligned_ref:
+                doc_path, anchor = aligned_ref.split("#", 1)
+            else:
+                doc_path = aligned_ref
+                anchor = ""
+
+            # Skip code references
+            if not doc_path.startswith("src/") and ":" not in aligned_ref:
+                aligned_docs.append({
+                    "path": doc_path,
+                    "anchor": anchor,
+                    "exists": (project_root / doc_path).exists(),
+                    "requires_human": alignment_map.is_human_required(doc_path),
+                })
+
+        if aligned_docs:
+            hierarchy = build_document_hierarchy(project_root, alignment_map, aligned_docs)
+            if hierarchy:
+                console.print("\n[bold]Document Hierarchy:[/bold]")
+                for item in hierarchy:
+                    indent = "  " * (["identity", "design", "technical"].index(item.get("level", "technical")))
+                    marker = "!! " if item.get("requires_human") else "   "
+                    console.print(f"{indent}{marker}{item['document']} ({item['level']})")
+
+    # Action required
+    console.print("\n[bold green]Action Required:[/bold green]")
+    _print_fix_instructions(fix)
+
+    console.print("\n[dim]-------------------------------[/dim]\n")
+
+
+def _print_fix_instructions(fix: dict) -> None:
+    """Print specific instructions based on fix type."""
+    issue = fix.get('issue', '')
+
+    if issue == "line_drift":
+        console.print("  1. Review the detected line change")
+        console.print("  2. Resolve the overlap with the conflicting block")
+        console.print("  3. Update the alignment map manually or restructure blocks")
+        if fix.get('overlap_with'):
+            console.print(f"  4. Consider merging or splitting blocks to avoid overlap with {fix['overlap_with']}")
+
+    elif issue == "missing_file":
+        console.print("  1. Review the orphaned references listed above")
+        console.print("  2. Update or remove references in the dependent blocks")
+        console.print("  3. Then remove the missing file from the alignment map")
+
+    elif issue == "invalid_lines":
+        console.print("  1. Review the dependencies listed above")
+        console.print("  2. Update the aligned documents if needed")
+        console.print("  3. Either remove the block or update its line range")
+        if fix.get('aligns_with'):
+            console.print("  4. Ensure aligned documents are updated before removing")
+
+    elif issue == "missing_anchor":
+        console.print("  1. Determine the correct anchor in the document")
+        console.print("  2. Update the aligned_with reference to the correct anchor")
+        console.print("  3. Or remove the alignment if no longer valid")
+
+    else:
+        console.print("  Review the issue and update the alignment map manually")
+
+
+def print_lint_summary(
+    fixes: list[dict],
+    applied: list[str] | None = None,
+    skipped: list[dict] | None = None,
+) -> None:
+    """Print a summary of lint results."""
+    if not fixes:
+        console.print("\n[bold green]Alignment map is valid[/bold green]\n")
+        return
+
+    auto_fixes = [f for f in fixes if f.get('action') == 'auto']
+    manual_fixes = [f for f in fixes if f.get('action') == 'manual']
+
+    console.print("\n[bold]Lint Summary:[/bold]")
+    console.print(f"  Total issues: {len(fixes)}")
+    console.print(f"  Auto-fixable: {len(auto_fixes)}")
+    console.print(f"  Requires manual review: {len(manual_fixes)}")
+
+    if applied:
+        console.print(f"\n[green]Applied {len(applied)} auto fix(es)[/green]")
+
+    if skipped:
+        console.print(f"\n[yellow]Skipped {len(skipped)} manual fix(es)[/yellow]")
+
+
 def print_block_modification_trace(
     project_root: Path,
     file_path: Path,

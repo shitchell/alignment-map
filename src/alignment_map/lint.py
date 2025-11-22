@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 from rich.console import Console
 
-from .models import AlignmentMap, LineRange
+from .models import AlignmentMap, LineRange, OverlapError
 from .parser import extract_document_section
 from .suggest import find_ast_node_end
 from .touch import extract_target_name
@@ -26,9 +26,10 @@ def lint_alignment_map(
         "issue": str,          # Issue type: line_drift, missing_file, invalid_lines, missing_anchor
         "old_lines": str,      # Original lines (for line_drift/invalid_lines)
         "new_lines": str,      # Suggested new lines (for line_drift)
-        "action": str,         # Action to take: update_lines, remove_block, remove_file
+        "action": str,         # auto or manual
         "confidence": str,     # high, medium, low
         "description": str,    # Human-readable description
+        "reason": str,         # Reason for manual fix (if manual)
     }
     """
     fixes: list[dict] = []
@@ -42,9 +43,10 @@ def lint_alignment_map(
             "file": str(map_path),
             "block": "",
             "issue": "parse_error",
-            "action": "manual_fix",
+            "action": "manual",
             "confidence": "high",
             "description": f"Failed to parse alignment map: {e}",
+            "reason": "Cannot parse alignment map file",
         })
         return fixes
 
@@ -54,14 +56,26 @@ def lint_alignment_map(
 
         # Check if file exists
         if not file_path.exists():
-            fixes.append({
+            fix = {
                 "file": str(mapping.file),
                 "block": "",
                 "issue": "missing_file",
-                "action": "remove_file",
                 "confidence": "high",
                 "description": f"File not found: {mapping.file}",
-            })
+            }
+
+            # Check for orphaned references
+            refs = alignment_map.get_all_references_to(str(mapping.file))
+            if refs:
+                fix["action"] = "manual"
+                fix["reason"] = f"Has {len(refs)} orphaned reference(s)"
+                fix["orphaned_refs"] = [
+                    f"{path}:{block.name}" for path, block in refs
+                ]
+            else:
+                fix["action"] = "auto"
+
+            fixes.append(fix)
             # Skip checking blocks for missing files
             continue
 
@@ -74,9 +88,10 @@ def lint_alignment_map(
                 "file": str(mapping.file),
                 "block": "",
                 "issue": "read_error",
-                "action": "manual_fix",
+                "action": "manual",
                 "confidence": "high",
                 "description": f"Cannot read file: {e}",
+                "reason": "Cannot read file to validate",
             })
             continue
 
@@ -84,15 +99,30 @@ def lint_alignment_map(
         for block in mapping.blocks:
             # Check line range is valid
             if block.lines.end > line_count:
-                fixes.append({
+                fix = {
                     "file": str(mapping.file),
                     "block": block.name,
                     "issue": "invalid_lines",
                     "old_lines": str(block.lines),
-                    "action": "update_lines",
                     "confidence": "high",
                     "description": f"Block '{block.name}' ends at line {block.lines.end} but file has {line_count} lines",
-                })
+                }
+
+                # Check if block has dependencies
+                has_alignments = bool(block.aligned_with)
+                refs = alignment_map.get_all_references_to(f"{mapping.file}#{block.name}")
+
+                if has_alignments or refs:
+                    fix["action"] = "manual"
+                    fix["reason"] = "Block has dependencies"
+                    if block.aligned_with:
+                        fix["aligns_with"] = block.aligned_with
+                    if refs:
+                        fix["referenced_by"] = [f"{p}:{b.name}" for p, b in refs]
+                else:
+                    fix["action"] = "auto"
+
+                fixes.append(fix)
                 # Don't check for line drift if lines are already invalid
                 continue
 
@@ -105,16 +135,33 @@ def lint_alignment_map(
             )
 
             if new_lines is not None and new_lines != block.lines:
-                fixes.append({
+                fix = {
                     "file": str(mapping.file),
                     "block": block.name,
                     "issue": "line_drift",
                     "old_lines": str(block.lines),
                     "new_lines": str(new_lines),
-                    "action": "update_lines",
                     "confidence": "high",
                     "description": f"Block '{block.name}' has drifted from {block.lines} to {new_lines}",
-                })
+                }
+
+                # Check if update would cause overlap
+                would_overlap = False
+                overlap_with = None
+                for other in mapping.blocks:
+                    if other.name != block.name and new_lines.overlaps(other.lines):
+                        would_overlap = True
+                        overlap_with = other
+                        break
+
+                if would_overlap:
+                    fix["action"] = "manual"
+                    fix["reason"] = "Would overlap with existing block"
+                    fix["overlap_with"] = f"{overlap_with.name} ({overlap_with.lines})"
+                else:
+                    fix["action"] = "auto"
+
+                fixes.append(fix)
 
             # Check aligned docs exist and anchors resolve
             for aligned_ref in block.aligned_with:
@@ -135,9 +182,10 @@ def lint_alignment_map(
                         "block": block.name,
                         "issue": "missing_anchor",
                         "aligned_ref": aligned_ref,
-                        "action": "remove_alignment",
+                        "action": "manual",
                         "confidence": "high",
                         "description": f"Aligned document not found: {doc_path_str}",
+                        "reason": "Cannot determine correct anchor automatically",
                     })
                     continue
 
@@ -150,9 +198,10 @@ def lint_alignment_map(
                             "block": block.name,
                             "issue": "missing_anchor",
                             "aligned_ref": aligned_ref,
-                            "action": "remove_alignment",
+                            "action": "manual",
                             "confidence": "medium",
                             "description": f"Anchor '{anchor}' not found in {doc_path_str}",
+                            "reason": "Cannot determine correct anchor automatically",
                         })
 
     return fixes
@@ -244,13 +293,16 @@ def apply_fixes_file(
     project_root: Path,
     map_path: Path,
     fixes_path: Path,
-) -> list[str]:
-    """Apply fixes from .alignment-map.fixes and return list of actions taken.
+) -> tuple[list[str], list[dict]]:
+    """Apply auto fixes from .alignment-map.fixes and return results.
 
-    Returns a list of human-readable strings describing what was fixed.
+    Returns a tuple of:
+        - List of human-readable strings describing what was fixed
+        - List of manual fixes that were skipped
     """
     console = Console()
     actions_taken: list[str] = []
+    skipped_manual: list[dict] = []
 
     # Load fixes file
     with open(fixes_path) as f:
@@ -259,7 +311,7 @@ def apply_fixes_file(
     fixes = fixes_data.get("fixes", [])
 
     if not fixes:
-        return ["No fixes to apply"]
+        return (["No fixes to apply"], [])
 
     # Load the alignment map
     with open(map_path) as f:
@@ -277,11 +329,22 @@ def apply_fixes_file(
         file_path = fix.get("file", "")
         block_name = fix.get("block", "")
 
-        if action == "remove_file":
+        # Skip manual fixes
+        if action == "manual":
+            skipped_manual.append(fix)
+            continue
+
+        # Only apply auto fixes
+        if action != "auto":
+            # Legacy support for old action types
+            pass
+
+        # Handle different issue types
+        if issue == "missing_file":
             files_to_remove.add(file_path)
             actions_taken.append(f"Removed file mapping: {file_path}")
 
-        elif action == "update_lines" and "new_lines" in fix:
+        elif issue == "line_drift" and "new_lines" in fix:
             # Update block lines
             new_lines = fix["new_lines"]
             old_lines = fix.get("old_lines", "")
@@ -296,14 +359,10 @@ def apply_fixes_file(
                             )
                             break
 
-        elif action == "remove_block":
+        elif issue == "invalid_lines":
+            # Remove block with invalid lines (only if auto)
             blocks_to_remove.append((file_path, block_name))
-            actions_taken.append(f"Removed block: {file_path}:{block_name}")
-
-        elif action == "remove_alignment":
-            aligned_ref = fix.get("aligned_ref", "")
-            alignments_to_remove.append((file_path, block_name, aligned_ref))
-            actions_taken.append(f"Removed alignment: {file_path}:{block_name} -> {aligned_ref}")
+            actions_taken.append(f"Removed block with invalid lines: {file_path}:{block_name}")
 
     # Remove alignments
     for file_path, block_name, aligned_ref in alignments_to_remove:
@@ -333,4 +392,4 @@ def apply_fixes_file(
     with open(map_path, "w") as f:
         yaml.dump(map_data, f, default_flow_style=False, sort_keys=False)
 
-    return actions_taken
+    return (actions_taken, skipped_manual)
