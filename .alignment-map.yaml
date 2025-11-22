@@ -62,8 +62,23 @@ mappings:
   # === CLI Commands ===
   - file: src/alignment_map/cli.py
     blocks:
+      - name: hook check helper
+        lines: 21-49
+        last_updated: 2025-11-22T00:00:00
+        last_update_comment: "Add warning when git hook not installed"
+        aligned_with:
+          - SPEC.md#installation
+          - README.md#quick-start
+
+      - name: main entry point
+        lines: 50-62
+        last_updated: 2025-11-22T00:00:00
+        last_update_comment: "Add hook check on command invocation"
+        aligned_with:
+          - SPEC.md#cli-commands
+
       - name: check command
-        lines: 28-56
+        lines: 65-93
         last_updated: 2024-01-16T00:00:00
         last_update_comment: "CLI restructuring with block-*, map-*, hook-* prefixes"
         aligned_with:
@@ -71,7 +86,7 @@ mappings:
           - README.md#commands
 
       - name: map-lint command
-        lines: 59-177
+        lines: 96-213
         last_updated: 2024-01-16T00:00:00
         last_update_comment: "Renamed from validate, added --apply workflow"
         aligned_with:
@@ -79,7 +94,7 @@ mappings:
           - README.md#commands
 
       - name: block-add command
-        lines: 179-256
+        lines: 216-292
         last_updated: 2024-01-16T00:00:00
         last_update_comment: "Renamed from update, handles overlap strategies"
         aligned_with:
@@ -87,7 +102,7 @@ mappings:
           - README.md#commands
 
       - name: block-touch command
-        lines: 258-297
+        lines: 295-334
         last_updated: 2024-01-16T00:00:00
         last_update_comment: "New command for updating existing block metadata"
         aligned_with:
@@ -95,7 +110,7 @@ mappings:
           - README.md#commands
 
       - name: block-suggest command
-        lines: 300-336
+        lines: 337-373
         last_updated: 2024-01-16T00:00:00
         last_update_comment: "Renamed from suggest"
         aligned_with:
@@ -103,14 +118,14 @@ mappings:
           - README.md#commands
 
       - name: trace command
-        lines: 339-391
+        lines: 376-428
         last_updated: 2024-01-16T00:00:00
         last_update_comment: "Context printing for file/line locations"
         aligned_with:
           - SPEC.md#cli-commands
 
       - name: map-graph command
-        lines: 394-420
+        lines: 431-457
         last_updated: 2024-01-16T00:00:00
         last_update_comment: "Renamed from graph"
         aligned_with:
@@ -118,12 +133,42 @@ mappings:
           - README.md#commands
 
       - name: hook-install command
-        lines: 423-468
+        lines: 460-505
         last_updated: 2024-01-16T00:00:00
         last_update_comment: "Renamed from install-hook"
         aligned_with:
           - SPEC.md#installation
           - README.md#quick-start
+
+  # === Development Installation ===
+  - file: src/alignment_map/_install.py
+    blocks:
+      - name: install hook helper
+        lines: 1-37
+        last_updated: 2025-11-22T00:00:00
+        last_update_comment: "Auto-install git hook on development install"
+        aligned_with:
+          - SPEC.md#installation
+          - README.md#quick-start
+
+  - file: setup.py
+    blocks:
+      - name: custom develop command
+        lines: 1-18
+        last_updated: 2025-11-22T00:00:00
+        last_update_comment: "Enable auto-install git hook on setup.py develop"
+        aligned_with:
+          - SPEC.md#installation
+          - README.md#quick-start
+
+  - file: pyproject.toml
+    blocks:
+      - name: build configuration
+        lines: 1-62
+        last_updated: 2025-11-22T00:00:00
+        last_update_comment: "Use legacy build backend for custom commands"
+        aligned_with:
+          - SPEC.md#installation
 
   # === Core Checker Logic ===
   - file: src/alignment_map/checker.py
@@ -375,8 +420,8 @@ mappings:
           - SPEC.md#goals
 
       - name: Quick Start
-        lines: 19-29
-        last_reviewed: 2024-11-22T00:00:00
+        lines: 19-30
+        last_reviewed: 2025-11-22T00:00:00
         aligned_with:
           - SPEC.md#installation
 
@@ -388,6 +433,11 @@ mappings:
 
   - file: SPEC.md
     blocks:
+      - name: frontmatter
+        lines: 1-3
+        last_reviewed: 2025-11-22T00:00:00
+        aligned_with: []
+
       - name: Goals
         id: goals
         lines: 11-19
@@ -424,7 +474,7 @@ mappings:
 
       - name: Installation
         id: installation
-        lines: 544-564
-        last_reviewed: 2024-11-22T00:00:00
+        lines: 563-594
+        last_reviewed: 2025-11-22T00:00:00
         aligned_with:
           - README.md#quick-start

@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2024-11-22T00:00:00
+last_reviewed: 2025-11-22T00:00:00
 ---
 
 # Alignment Map — Specification
@@ -562,10 +562,20 @@ settings:
 
 ## Installation
 
-### As Git Hook
+### Development Install (Auto-installs Hook)
 
 ```bash
-# Install the pre-commit hook
+# Install with dev dependencies - hook is auto-installed
+pip install -e ".[dev]"
+
+# The hook is automatically installed when running setup.py develop
+python setup.py develop
+```
+
+### Manual Hook Installation
+
+```bash
+# Install the pre-commit hook manually
 alignment-map hook-install [--mapfile FILE]
 
 # This creates .git/hooks/pre-commit that calls alignment-map check --staged

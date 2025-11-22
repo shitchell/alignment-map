@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2024-11-22T00:00:00
+last_reviewed: 2025-11-22T00:00:00
 ---
 
 # Alignment Map
@@ -18,10 +18,11 @@ Alignment Map ensures that when code changes, related documentation is reviewed.
 ## Quick Start
 
 ```bash
-# Install
-pip install -e .
+# Install with dev dependencies (auto-installs git hook)
+pip install -e ".[dev]"
 
-# Install git hook
+# Or install and manually setup hook
+pip install -e .
 alignment-map hook-install
 
 # Create initial alignment map

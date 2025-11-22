@@ -18,11 +18,48 @@ from .output import (
 )
 
 
-@click.group()
+def _check_hook_installed() -> None:
+    """Check if the git hook is installed and suggest installation if not."""
+    try:
+        # Check if we're in a git repo
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return  # Not in a git repo
+
+        git_dir = Path(result.stdout.strip())
+        hook_path = git_dir / "hooks" / "pre-commit"
+
+        # Check if hook exists and contains alignment-map
+        if hook_path.exists():
+            hook_content = hook_path.read_text()
+            if "alignment-map" in hook_content:
+                return  # Hook is installed
+
+        # Hook not installed - show warning
+        click.echo(
+            "Warning: Git hook not installed. "
+            "Run 'alignment-map hook-install' to enforce alignment checks on commit.",
+            err=True,
+        )
+    except Exception:
+        pass  # Silently ignore any errors in hook detection
+
+
+@click.group(invoke_without_command=True)
 @click.version_option()
-def main() -> None:
+@click.pass_context
+def main(ctx: click.Context) -> None:
     """Alignment Map - Enforce coherency across code and documentation."""
-    pass
+    # Only check hook when actually running a command (not for --help)
+    if ctx.invoked_subcommand is not None:
+        _check_hook_installed()
+    elif not ctx.invoked_subcommand:
+        # Show help if no command given
+        click.echo(ctx.get_help())
 
 
 @main.command()
