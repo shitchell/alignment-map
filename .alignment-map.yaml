@@ -1,0 +1,131 @@
+version: 1
+
+# This alignment map is used to test the tool against itself (dogfooding)
+
+hierarchy:
+  requires_human:
+    - SPEC.md  # Core specification requires human review
+  technical:
+    - README.md
+
+settings:
+  line_tolerance: 10
+  fuzzy_match: true
+  require_complete_coverage: false  # Not enforcing full coverage yet
+
+mappings:
+  # Core models
+  - file: src/alignment_map/models.py
+    blocks:
+      - name: CheckResult enum
+        lines: 14-24
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Initial implementation"
+        aligned_with:
+          - SPEC.md#git-hook-behavior
+
+      - name: Block dataclass
+        lines: 43-54
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Initial implementation"
+        aligned_with:
+          - SPEC.md#alignment-mapyaml-schema
+
+      - name: AlignmentMap dataclass
+        lines: 63-85
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Initial implementation"
+        aligned_with:
+          - SPEC.md#alignment-mapyaml-schema
+
+      - name: CheckFailure dataclass
+        lines: 100-112
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Initial implementation"
+        aligned_with:
+          - SPEC.md#error-messages
+
+  # Core checker logic
+  - file: src/alignment_map/checker.py
+    blocks:
+      - name: check_staged_changes function
+        lines: 12-34
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Initial implementation"
+        aligned_with:
+          - SPEC.md#git-hook-behavior
+
+      - name: check_file_change function
+        lines: 37-85
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Initial implementation"
+        aligned_with:
+          - SPEC.md#git-hook-behavior
+
+      - name: check_aligned_document function
+        lines: 109-160
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Initial implementation"
+        aligned_with:
+          - SPEC.md#git-hook-behavior
+
+  # CLI commands
+  - file: src/alignment_map/cli.py
+    blocks:
+      - name: check command
+        lines: 24-53
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Initial implementation"
+        aligned_with:
+          - SPEC.md#cli-commands
+          - README.md#commands
+
+      - name: validate command
+        lines: 56-100
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Initial implementation"
+        aligned_with:
+          - SPEC.md#cli-commands
+
+      - name: install-hook command
+        lines: 147-180
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Initial implementation"
+        aligned_with:
+          - SPEC.md#installation
+
+  # Output formatting
+  - file: src/alignment_map/output.py
+    blocks:
+      - name: print_stale_docs function
+        lines: 70-110
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Initial implementation"
+        aligned_with:
+          - SPEC.md#example-stale-technical-doc
+
+      - name: print_human_escalation function
+        lines: 113-150
+        last_updated: 2024-01-16T00:00:00
+        last_update_comment: "Initial implementation"
+        aligned_with:
+          - SPEC.md#example-human-escalation-required
+
+  # Intentionally broken fixtures for testing
+  - file: tests/fixtures/broken.py
+    blocks:
+      - name: Broken unmapped code
+        lines: 1-30
+        last_updated: 2020-01-01T00:00:00
+        last_update_comment: "Intentionally stale for testing"
+        aligned_with:
+          - tests/fixtures/BROKEN.md#broken-code
+
+  - file: tests/fixtures/BROKEN.md
+    blocks:
+      - name: Broken documentation
+        id: broken-code
+        lines: 1-30
+        last_reviewed: 2019-01-01T00:00:00
+        aligned_with:
+          - SPEC.md#nonexistent-anchor  # Intentionally broken reference
