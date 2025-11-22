@@ -51,10 +51,14 @@ def check(staged: bool, check_all: bool, files: tuple[str, ...], mapfile: Path |
 
 
 @main.command("map-lint")
-@click.option("--fix-lines", is_flag=True, help="Attempt to auto-fix line numbers")
+@click.option("--apply", "apply_fixes", is_flag=True, help="Apply fixes from .alignment-map.fixes")
 @click.option("--mapfile", "-m", type=click.Path(exists=True, path_type=Path), help="Path to alignment map file")
-def map_lint(fix_lines: bool, mapfile: Path | None) -> None:
-    """Validate the alignment map itself."""
+def map_lint(apply_fixes: bool, mapfile: Path | None) -> None:
+    """Validate the alignment map itself.
+
+    Without --apply: Lint the map and write suggested fixes to .alignment-map.fixes
+    With --apply: Apply fixes from the .alignment-map.fixes file
+    """
     try:
         project_root = find_project_root(mapfile=mapfile)
     except FileNotFoundError as e:
@@ -62,54 +66,59 @@ def map_lint(fix_lines: bool, mapfile: Path | None) -> None:
         sys.exit(2)
 
     map_path = mapfile if mapfile else project_root / ".alignment-map.yaml"
+    fixes_path = map_path.parent / ".alignment-map.fixes"
 
     if not map_path.exists():
         click.echo(f"Error: Alignment map not found: {map_path}", err=True)
         sys.exit(2)
 
-    from .parser import parse_alignment_map
+    from .lint import apply_fixes_file, lint_alignment_map, write_fixes_file
 
-    try:
-        alignment_map = parse_alignment_map(map_path)
-    except Exception as e:
-        click.echo(f"Error parsing alignment map: {e}", err=True)
-        sys.exit(2)
+    if apply_fixes:
+        # Apply mode - read and apply fixes from file
+        if not fixes_path.exists():
+            click.echo(f"Error: No fixes file found at {fixes_path}", err=True)
+            click.echo("\nRun 'alignment-map map-lint' first to generate fixes.", err=True)
+            sys.exit(2)
 
-    errors: list[str] = []
+        actions = apply_fixes_file(project_root, map_path, fixes_path)
 
-    # Check all referenced files exist
-    for mapping in alignment_map.mappings:
-        file_path = project_root / mapping.file_path
-        if not file_path.exists():
-            errors.append(f"File not found: {mapping.file_path}")
+        if actions:
+            click.echo("Applied fixes:\n")
+            for action in actions:
+                click.echo(f"  - {action}")
+            click.echo("")
 
-        # Check line ranges are valid
-        if file_path.exists():
-            line_count = len(file_path.read_text().split("\n"))
-            for block in mapping.blocks:
-                if block.lines.end > line_count:
-                    errors.append(
-                        f"{mapping.file_path}: Block '{block.name}' "
-                        f"ends at line {block.lines.end} but file has {line_count} lines"
-                    )
+        # Delete the fixes file after successful apply
+        fixes_path.unlink()
+        click.echo(f"Deleted {fixes_path}")
+        click.echo("\nFixes applied successfully")
+        sys.exit(0)
 
-        # Check aligned docs exist
-        for block in mapping.blocks:
-            for aligned_ref in block.aligned_with:
-                doc_path_str = aligned_ref.split("#")[0]
-                if not doc_path_str.startswith("src/"):  # Skip code refs
-                    doc_path = project_root / doc_path_str
-                    if not doc_path.exists():
-                        errors.append(f"Aligned doc not found: {aligned_ref}")
+    else:
+        # Lint mode - check for issues and write fixes file
+        fixes = lint_alignment_map(project_root, map_path)
 
-    if errors:
-        click.echo("Alignment map validation failed:\n", err=True)
-        for error in errors:
-            click.echo(f"  ✗ {error}", err=True)
+        if not fixes:
+            click.echo("Alignment map is valid")
+            # Remove stale fixes file if it exists
+            if fixes_path.exists():
+                fixes_path.unlink()
+            sys.exit(0)
+
+        # Write fixes to file
+        write_fixes_file(fixes_path, fixes)
+
+        # Print summary
+        click.echo("Alignment map issues found:\n", err=True)
+        for fix in fixes:
+            issue_type = fix.get("issue", "unknown")
+            description = fix.get("description", "")
+            click.echo(f"  - [{issue_type}] {description}", err=True)
+
+        click.echo(f"\nFixes written to: {fixes_path}", err=True)
+        click.echo("Run 'alignment-map map-lint --apply' to apply these fixes.", err=True)
         sys.exit(1)
-
-    click.echo("✓ Alignment map is valid")
-    sys.exit(0)
 
 
 @main.command("block-add")

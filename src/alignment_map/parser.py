@@ -94,7 +94,8 @@ def extract_document_section(doc_path: Path, anchor: str) -> DocumentSection | N
     anchor_pattern = anchor.lstrip("#").replace("-", "[- ]?")
 
     # Find the header matching the anchor
-    header_pattern = rf"^(#{1,6})\s+.*{anchor_pattern}.*$"
+    # Note: Double braces {{1,6}} needed to escape from f-string formatting
+    header_pattern = rf"^(#{{1,6}})\s+.*{anchor_pattern}.*$"
     lines = content.split("\n")
 
     start_idx = None

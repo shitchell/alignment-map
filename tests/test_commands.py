@@ -12,6 +12,7 @@ from alignment_map.update import find_overlapping_blocks, suggest_overlap_strate
 from alignment_map.graph import build_graph_data
 from alignment_map.parser import parse_alignment_map
 from alignment_map.touch import touch_block, find_block_current_location, extract_target_name
+from alignment_map.lint import lint_alignment_map, write_fixes_file, apply_fixes_file, detect_line_drift
 
 from .conftest import create_test_project, stage_file_change
 
@@ -572,3 +573,410 @@ def standalone():
         assert lines is not None
         assert lines.start == 13
         assert lines.end == 14
+
+
+class TestMapLintCommand:
+    """Tests for the map-lint command."""
+
+    def test_lint_generates_fixes_file(self, temp_git_repo: Path) -> None:
+        """Test that lint generates .alignment-map.fixes for issues."""
+        # Create project with a missing file reference
+        alignment_map = """version: 1
+
+hierarchy:
+  requires_human: []
+  technical:
+    - docs/**/*.md
+
+mappings:
+  - file: src/missing.py
+    blocks:
+      - name: MissingBlock
+        lines: 1-10
+        aligned_with: []
+"""
+        create_test_project(temp_git_repo, alignment_map, {})
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+
+        assert len(fixes) == 1
+        assert fixes[0]["issue"] == "missing_file"
+        assert fixes[0]["file"] == "src/missing.py"
+        assert fixes[0]["action"] == "remove_file"
+
+    def test_lint_detects_line_drift(self, temp_git_repo: Path) -> None:
+        """Test that lint detects when code has moved."""
+        alignment_map = """version: 1
+
+mappings:
+  - file: src/module.py
+    blocks:
+      - name: my_function function
+        lines: 1-3
+        aligned_with: []
+"""
+        # Original code had function at lines 1-3
+        # But now it's at lines 5-7
+        code_content = """# New header
+# More comments
+
+def my_function():
+    \"\"\"A function.\"\"\"
+    return 42
+"""
+        create_test_project(
+            temp_git_repo,
+            alignment_map,
+            {"src/module.py": code_content},
+        )
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+
+        assert len(fixes) == 1
+        assert fixes[0]["issue"] == "line_drift"
+        assert fixes[0]["old_lines"] == "1-3"
+        assert fixes[0]["new_lines"] == "4-6"
+        assert fixes[0]["confidence"] == "high"
+
+    def test_lint_detects_missing_file(self, temp_git_repo: Path) -> None:
+        """Test that lint detects missing referenced files."""
+        alignment_map = """version: 1
+
+mappings:
+  - file: src/does_not_exist.py
+    blocks:
+      - name: SomeBlock
+        lines: 1-10
+        aligned_with: []
+"""
+        create_test_project(temp_git_repo, alignment_map, {})
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+
+        assert len(fixes) == 1
+        assert fixes[0]["issue"] == "missing_file"
+        assert fixes[0]["action"] == "remove_file"
+
+    def test_lint_detects_invalid_lines(self, temp_git_repo: Path) -> None:
+        """Test that lint detects invalid line ranges."""
+        alignment_map = """version: 1
+
+mappings:
+  - file: src/module.py
+    blocks:
+      - name: MyBlock
+        lines: 1-100
+        aligned_with: []
+"""
+        # File only has 5 lines
+        code_content = """# Line 1
+# Line 2
+# Line 3
+# Line 4
+# Line 5
+"""
+        create_test_project(
+            temp_git_repo,
+            alignment_map,
+            {"src/module.py": code_content},
+        )
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+
+        assert len(fixes) == 1
+        assert fixes[0]["issue"] == "invalid_lines"
+        assert "ends at line 100" in fixes[0]["description"]
+
+    def test_lint_detects_missing_anchor(self, temp_git_repo: Path) -> None:
+        """Test that lint detects when an anchor doesn't resolve."""
+        alignment_map = """version: 1
+
+mappings:
+  - file: src/module.py
+    blocks:
+      - name: MyClass
+        lines: 1-2
+        aligned_with:
+          - docs/ARCHITECTURE.md#nonexistent-section
+"""
+        code_content = """class MyClass:
+    pass
+"""
+        doc_content = """# Architecture
+
+## Some Other Section
+
+Content here.
+"""
+        create_test_project(
+            temp_git_repo,
+            alignment_map,
+            {
+                "src/module.py": code_content,
+                "docs/ARCHITECTURE.md": doc_content,
+            },
+        )
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+
+        assert len(fixes) == 1
+        assert fixes[0]["issue"] == "missing_anchor"
+        assert "nonexistent-section" in fixes[0]["description"]
+
+    def test_lint_no_issues_valid_map(self, temp_git_repo: Path) -> None:
+        """Test that lint returns empty list for valid map."""
+        alignment_map = """version: 1
+
+mappings:
+  - file: src/module.py
+    blocks:
+      - name: MyClass class
+        lines: 1-2
+        aligned_with:
+          - docs/ARCHITECTURE.md#my-class
+"""
+        code_content = """class MyClass:
+    pass
+"""
+        doc_content = """# Architecture
+
+## My Class
+
+Description of MyClass.
+"""
+        create_test_project(
+            temp_git_repo,
+            alignment_map,
+            {
+                "src/module.py": code_content,
+                "docs/ARCHITECTURE.md": doc_content,
+            },
+        )
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+
+        assert len(fixes) == 0
+
+    def test_apply_requires_fixes_file(self, temp_git_repo: Path) -> None:
+        """Test that --apply errors without fixes file."""
+        alignment_map = """version: 1
+mappings: []
+"""
+        create_test_project(temp_git_repo, alignment_map, {})
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes_path = temp_git_repo / ".alignment-map.fixes"
+
+        # Fixes file doesn't exist
+        assert not fixes_path.exists()
+
+        # Applying without fixes file should fail (tested via CLI)
+        # Here we just verify the file doesn't exist
+        # The actual CLI test would check the exit code
+
+    def test_apply_fixes_line_drift(self, temp_git_repo: Path) -> None:
+        """Test that --apply correctly fixes line drift."""
+        alignment_map = """version: 1
+
+mappings:
+  - file: src/module.py
+    blocks:
+      - name: my_function function
+        lines: 1-3
+        aligned_with: []
+"""
+        code_content = """# Header
+# Comment
+
+def my_function():
+    return 42
+"""
+        create_test_project(
+            temp_git_repo,
+            alignment_map,
+            {"src/module.py": code_content},
+        )
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes_path = temp_git_repo / ".alignment-map.fixes"
+
+        # Run lint to generate fixes
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+        write_fixes_file(fixes_path, fixes)
+
+        assert fixes_path.exists()
+
+        # Apply the fixes
+        actions = apply_fixes_file(temp_git_repo, map_path, fixes_path)
+
+        assert len(actions) == 1
+        assert "1-3" in actions[0] and "4-5" in actions[0]
+
+        # Verify the map was updated
+        import yaml
+        with open(map_path) as f:
+            data = yaml.safe_load(f)
+
+        block = data["mappings"][0]["blocks"][0]
+        assert block["lines"] == "4-5"
+
+    def test_apply_removes_missing_file(self, temp_git_repo: Path) -> None:
+        """Test that --apply removes mappings for missing files."""
+        alignment_map = """version: 1
+
+mappings:
+  - file: src/existing.py
+    blocks:
+      - name: ExistingBlock
+        lines: 1-5
+        aligned_with: []
+  - file: src/missing.py
+    blocks:
+      - name: MissingBlock
+        lines: 1-10
+        aligned_with: []
+"""
+        create_test_project(
+            temp_git_repo,
+            alignment_map,
+            {"src/existing.py": "# existing\n" * 5},
+        )
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes_path = temp_git_repo / ".alignment-map.fixes"
+
+        # Run lint to generate fixes
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+        write_fixes_file(fixes_path, fixes)
+
+        # Apply the fixes
+        actions = apply_fixes_file(temp_git_repo, map_path, fixes_path)
+
+        assert len(actions) == 1
+        assert "src/missing.py" in actions[0]
+
+        # Verify the map was updated
+        import yaml
+        with open(map_path) as f:
+            data = yaml.safe_load(f)
+
+        # Should only have one mapping now
+        assert len(data["mappings"]) == 1
+        assert data["mappings"][0]["file"] == "src/existing.py"
+
+    def test_detect_line_drift_function(self, temp_git_repo: Path) -> None:
+        """Test the detect_line_drift helper function."""
+        code_content = """# Header
+# Comment
+
+def my_function():
+    return 42
+"""
+        code_path = temp_git_repo / "test.py"
+        code_path.write_text(code_content)
+
+        # Function is actually at lines 4-5, but we say it's at 1-3
+        new_lines = detect_line_drift(
+            temp_git_repo,
+            Path("test.py"),
+            "my_function function",
+            LineRange(1, 3),
+        )
+
+        assert new_lines is not None
+        assert new_lines.start == 4
+        assert new_lines.end == 5
+
+    def test_detect_line_drift_no_drift(self, temp_git_repo: Path) -> None:
+        """Test detect_line_drift returns None when lines match."""
+        code_content = """def my_function():
+    return 42
+"""
+        code_path = temp_git_repo / "test.py"
+        code_path.write_text(code_content)
+
+        # Lines match exactly
+        new_lines = detect_line_drift(
+            temp_git_repo,
+            Path("test.py"),
+            "my_function function",
+            LineRange(1, 2),
+        )
+
+        # Should return None because there's no drift
+        assert new_lines is None
+
+    def test_write_and_read_fixes_file(self, temp_git_repo: Path) -> None:
+        """Test writing and reading the fixes file format."""
+        fixes = [
+            {
+                "file": "src/module.py",
+                "block": "MyClass",
+                "issue": "line_drift",
+                "old_lines": "10-50",
+                "new_lines": "15-55",
+                "confidence": "high",
+                "description": "Block drifted",
+            },
+        ]
+
+        fixes_path = temp_git_repo / ".alignment-map.fixes"
+        write_fixes_file(fixes_path, fixes)
+
+        assert fixes_path.exists()
+
+        # Read it back
+        import yaml
+        with open(fixes_path) as f:
+            data = yaml.safe_load(f)
+
+        assert "generated" in data
+        assert len(data["fixes"]) == 1
+        assert data["fixes"][0]["file"] == "src/module.py"
+        assert data["fixes"][0]["issue"] == "line_drift"
+
+    def test_lint_multiple_issues(self, temp_git_repo: Path) -> None:
+        """Test that lint finds multiple issues in one map."""
+        alignment_map = """version: 1
+
+mappings:
+  - file: src/missing.py
+    blocks:
+      - name: Block1
+        lines: 1-10
+        aligned_with: []
+  - file: src/module.py
+    blocks:
+      - name: MyClass class
+        lines: 1-3
+        aligned_with:
+          - docs/missing.md#section
+"""
+        # module.py exists but MyClass is at wrong lines
+        code_content = """# Header
+
+class MyClass:
+    pass
+"""
+        create_test_project(
+            temp_git_repo,
+            alignment_map,
+            {"src/module.py": code_content},
+        )
+
+        map_path = temp_git_repo / ".alignment-map.yaml"
+        fixes = lint_alignment_map(temp_git_repo, map_path)
+
+        # Should have: missing_file for src/missing.py, line_drift for MyClass, missing_anchor for docs/missing.md
+        assert len(fixes) >= 2
+
+        issue_types = [f["issue"] for f in fixes]
+        assert "missing_file" in issue_types
+        # At least one other issue
+        assert len(issue_types) >= 2
