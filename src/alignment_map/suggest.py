@@ -10,7 +10,6 @@ from rich.panel import Panel
 from rich.table import Table
 
 from .models import AlignmentMap, LineRange
-from .parser import parse_alignment_map
 
 
 class BlockSuggestion:
@@ -39,7 +38,7 @@ def suggest_blocks(
 
     # Parse existing map
     try:
-        alignment_map = parse_alignment_map(map_path)
+        alignment_map = AlignmentMap.load(map_path)
     except Exception as e:
         console.print(f"[red]Error parsing alignment map: {e}[/red]")
         return {}
@@ -131,7 +130,7 @@ def suggest_python_blocks(
 
                 suggestion = BlockSuggestion(
                     name=f"{node.name} class",
-                    lines=LineRange(start_line, end_line),
+                    lines=LineRange(start=start_line, end=end_line),
                     block_type="class",
                     confidence="high",
                 )
@@ -151,7 +150,7 @@ def suggest_python_blocks(
                 block_type = "method" if is_method else "function"
                 suggestion = BlockSuggestion(
                     name=f"{node.name} {block_type}",
-                    lines=LineRange(start_line, end_line),
+                    lines=LineRange(start=start_line, end=end_line),
                     block_type=block_type,
                     confidence="high",
                 )
@@ -163,7 +162,7 @@ def suggest_python_blocks(
 
                 suggestion = BlockSuggestion(
                     name=f"{node.name} async function",
-                    lines=LineRange(start_line, end_line),
+                    lines=LineRange(start=start_line, end=end_line),
                     block_type="async_function",
                     confidence="high",
                 )
@@ -225,7 +224,7 @@ def suggest_python_blocks_fallback(
 
             current_block = BlockSuggestion(
                 name=f"{match.group(1)} class",
-                lines=LineRange(i, i),  # End will be updated
+                lines=LineRange(start=i, end=i),  # End will be updated
                 block_type="class",
                 confidence="medium",
             )
@@ -247,7 +246,7 @@ def suggest_python_blocks_fallback(
 
                 current_block = BlockSuggestion(
                     name=f"{match.group(1)} function",
-                    lines=LineRange(i, i),
+                    lines=LineRange(start=i, end=i),
                     block_type="function",
                     confidence="medium",
                 )
@@ -264,7 +263,7 @@ def suggest_python_blocks_fallback(
 
                 current_block = BlockSuggestion(
                     name=f"{match.group(1)} async function",
-                    lines=LineRange(i, i),
+                    lines=LineRange(start=i, end=i),
                     block_type="async_function",
                     confidence="medium",
                 )
@@ -295,7 +294,7 @@ def suggest_generic_blocks(file_path: Path, existing_blocks: list) -> list[Block
             suggestions.append(
                 BlockSuggestion(
                     name=f"{file_path.stem} file",
-                    lines=LineRange(1, len(lines)),
+                    lines=LineRange(start=1, end=len(lines)),
                     block_type="file",
                     confidence="low",
                 )
@@ -322,7 +321,7 @@ def suggest_generic_blocks(file_path: Path, existing_blocks: list) -> list[Block
 
                 suggestion = BlockSuggestion(
                     name=f"{match.group(1) if match.groups() else 'Block'} {pattern_info['type']}",
-                    lines=LineRange(i, end_line),
+                    lines=LineRange(start=i, end=end_line),
                     block_type=pattern_info["type"],
                     confidence="low",
                 )

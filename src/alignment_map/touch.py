@@ -8,7 +8,6 @@ import yaml
 from rich.console import Console
 
 from .models import AlignmentMap, Block, LineRange
-from .parser import parse_alignment_map
 from .suggest import find_ast_node_end
 
 
@@ -28,7 +27,7 @@ def touch_block(
 
     # Parse existing map
     try:
-        alignment_map = parse_alignment_map(map_path)
+        alignment_map = AlignmentMap.load(map_path)
     except Exception as e:
         console.print(f"[red]Error parsing alignment map: {e}[/red]")
         return False, None, None
@@ -150,7 +149,7 @@ def find_block_current_location(
         if node_name == target_name:
             start_line = node.lineno
             end_line = find_ast_node_end(node)
-            return LineRange(start_line, end_line)
+            return LineRange(start=start_line, end=end_line)
 
     # Try fuzzy matching for methods inside classes
     for node in ast.walk(tree):
@@ -160,7 +159,7 @@ def find_block_current_location(
                     if item.name == target_name:
                         start_line = item.lineno
                         end_line = find_ast_node_end(item)
-                        return LineRange(start_line, end_line)
+                        return LineRange(start=start_line, end=end_line)
 
     return None
 

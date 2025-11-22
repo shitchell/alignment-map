@@ -5,12 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from alignment_map.models import LineRange
+from alignment_map.models import AlignmentMap, LineRange
 from alignment_map.suggest import BlockSuggestion, suggest_python_blocks
 from alignment_map.trace import collect_trace_data, trace_file_location
 from alignment_map.update import find_overlapping_blocks, suggest_overlap_strategy
 from alignment_map.graph import build_graph_data
-from alignment_map.parser import parse_alignment_map
 from alignment_map.touch import touch_block, find_block_current_location, extract_target_name
 from alignment_map.lint import lint_alignment_map, write_fixes_file, apply_fixes_file, detect_line_drift
 
@@ -65,7 +64,7 @@ This is the MyClass section.
         )
 
         # Run trace
-        alignment_map_obj = parse_alignment_map(temp_git_repo / ".alignment-map.yaml")
+        alignment_map_obj = AlignmentMap.load(temp_git_repo / ".alignment-map.yaml")
         result = trace_file_location(
             temp_git_repo,
             alignment_map_obj,
@@ -90,7 +89,7 @@ mappings: []
 """
         create_test_project(temp_git_repo, alignment_map, {})
 
-        alignment_map_obj = parse_alignment_map(temp_git_repo / ".alignment-map.yaml")
+        alignment_map_obj = AlignmentMap.load(temp_git_repo / ".alignment-map.yaml")
         result = trace_file_location(
             temp_git_repo,
             alignment_map_obj,
@@ -120,7 +119,7 @@ mappings:
             {"src/module.py": "\n" * 20},  # 20 lines
         )
 
-        alignment_map_obj = parse_alignment_map(temp_git_repo / ".alignment-map.yaml")
+        alignment_map_obj = AlignmentMap.load(temp_git_repo / ".alignment-map.yaml")
 
         # Trace line 15 (should be in Block2)
         result = trace_file_location(
@@ -144,27 +143,27 @@ class TestUpdateCommand:
         from alignment_map.models import Block
 
         blocks = [
-            Block(name="Block1", lines=LineRange(1, 10)),
-            Block(name="Block2", lines=LineRange(20, 30)),
-            Block(name="Block3", lines=LineRange(40, 50)),
+            Block(name="Block1", lines=LineRange(start=1, end=10)),
+            Block(name="Block2", lines=LineRange(start=20, end=30)),
+            Block(name="Block3", lines=LineRange(start=40, end=50)),
         ]
 
         # No overlap
-        overlaps = find_overlapping_blocks(blocks, LineRange(12, 18))
+        overlaps = find_overlapping_blocks(blocks, LineRange(start=12, end=18))
         assert len(overlaps) == 0
 
         # Overlap with Block1
-        overlaps = find_overlapping_blocks(blocks, LineRange(5, 15))
+        overlaps = find_overlapping_blocks(blocks, LineRange(start=5, end=15))
         assert len(overlaps) == 1
         assert overlaps[0].name == "Block1"
 
         # Overlap with Block2
-        overlaps = find_overlapping_blocks(blocks, LineRange(25, 35))
+        overlaps = find_overlapping_blocks(blocks, LineRange(start=25, end=35))
         assert len(overlaps) == 1
         assert overlaps[0].name == "Block2"
 
         # Multiple overlaps
-        overlaps = find_overlapping_blocks(blocks, LineRange(1, 45))
+        overlaps = find_overlapping_blocks(blocks, LineRange(start=1, end=45))
         assert len(overlaps) == 3
 
     def test_suggest_overlap_strategy(self) -> None:
@@ -172,24 +171,24 @@ class TestUpdateCommand:
         from alignment_map.models import Block
 
         # Subset -> extend
-        block = Block(name="Block", lines=LineRange(10, 30))
-        strategy = suggest_overlap_strategy(LineRange(15, 25), [block])
+        block = Block(name="Block", lines=LineRange(start=10, end=30))
+        strategy = suggest_overlap_strategy(LineRange(start=15, end=25), [block])
         assert strategy == "extend"
 
         # Superset -> replace
-        strategy = suggest_overlap_strategy(LineRange(5, 35), [block])
+        strategy = suggest_overlap_strategy(LineRange(start=5, end=35), [block])
         assert strategy == "replace"
 
         # Partial overlap -> split
-        strategy = suggest_overlap_strategy(LineRange(25, 40), [block])
+        strategy = suggest_overlap_strategy(LineRange(start=25, end=40), [block])
         assert strategy == "split"
 
         # Multiple overlaps -> replace
         blocks = [
-            Block(name="Block1", lines=LineRange(10, 20)),
-            Block(name="Block2", lines=LineRange(25, 35)),
+            Block(name="Block1", lines=LineRange(start=10, end=20)),
+            Block(name="Block2", lines=LineRange(start=25, end=35)),
         ]
-        strategy = suggest_overlap_strategy(LineRange(15, 30), blocks)
+        strategy = suggest_overlap_strategy(LineRange(start=15, end=30), blocks)
         assert strategy == "replace"
 
 
@@ -265,7 +264,7 @@ class Class2:
 
         try:
             # Existing block covers Class1
-            existing = [Block(name="Class1", lines=LineRange(1, 2))]
+            existing = [Block(name="Class1", lines=LineRange(start=1, end=2))]
             suggestions = suggest_python_blocks(temp_file, existing)
 
             # Should only suggest Class2
@@ -305,7 +304,7 @@ mappings:
 """
 
         create_test_project(temp_git_repo, alignment_map, {})
-        alignment_map_obj = parse_alignment_map(temp_git_repo / ".alignment-map.yaml")
+        alignment_map_obj = AlignmentMap.load(temp_git_repo / ".alignment-map.yaml")
 
         graph_data = build_graph_data(alignment_map_obj)
 
@@ -495,8 +494,8 @@ def block2():
 
         # Actually, let's test the overlap detection logic directly
         from alignment_map.touch import lines_overlap
-        assert lines_overlap(LineRange(1, 10), LineRange(5, 15)) is True
-        assert lines_overlap(LineRange(1, 5), LineRange(10, 15)) is False
+        assert lines_overlap(LineRange(start=1, end=10), LineRange(start=5, end=15)) is True
+        assert lines_overlap(LineRange(start=1, end=5), LineRange(start=10, end=15)) is False
 
     def test_touch_errors_on_missing_block(self, temp_git_repo: Path) -> None:
         """Test that block-touch errors when block not found."""
@@ -558,7 +557,7 @@ def standalone():
         lines = find_block_current_location(
             code_path,
             "MyClass class",
-            LineRange(1, 10),
+            LineRange(start=1, end=10),
         )
         assert lines is not None
         assert lines.start == 3
@@ -568,7 +567,7 @@ def standalone():
         lines = find_block_current_location(
             code_path,
             "standalone function",
-            LineRange(1, 5),
+            LineRange(start=1, end=5),
         )
         assert lines is not None
         assert lines.start == 13
@@ -886,7 +885,7 @@ def my_function():
             temp_git_repo,
             Path("test.py"),
             "my_function function",
-            LineRange(1, 3),
+            LineRange(start=1, end=3),
         )
 
         assert new_lines is not None
@@ -906,7 +905,7 @@ def my_function():
             temp_git_repo,
             Path("test.py"),
             "my_function function",
-            LineRange(1, 2),
+            LineRange(start=1, end=2),
         )
 
         # Should return None because there's no drift

@@ -8,7 +8,7 @@ import yaml
 from rich.console import Console
 
 from .models import AlignmentMap, LineRange
-from .parser import extract_document_section, parse_alignment_map
+from .parser import extract_document_section
 from .suggest import find_ast_node_end
 from .touch import extract_target_name
 
@@ -35,7 +35,7 @@ def lint_alignment_map(
 
     # Parse the alignment map
     try:
-        alignment_map = parse_alignment_map(map_path)
+        alignment_map = AlignmentMap.load(map_path)
     except Exception as e:
         # Can't parse the map - return a single critical error
         fixes.append({
@@ -50,17 +50,17 @@ def lint_alignment_map(
 
     # Check all mappings
     for mapping in alignment_map.mappings:
-        file_path = project_root / mapping.file_path
+        file_path = project_root / mapping.file
 
         # Check if file exists
         if not file_path.exists():
             fixes.append({
-                "file": str(mapping.file_path),
+                "file": str(mapping.file),
                 "block": "",
                 "issue": "missing_file",
                 "action": "remove_file",
                 "confidence": "high",
-                "description": f"File not found: {mapping.file_path}",
+                "description": f"File not found: {mapping.file}",
             })
             # Skip checking blocks for missing files
             continue
@@ -71,7 +71,7 @@ def lint_alignment_map(
             line_count = len(file_content.split("\n"))
         except Exception as e:
             fixes.append({
-                "file": str(mapping.file_path),
+                "file": str(mapping.file),
                 "block": "",
                 "issue": "read_error",
                 "action": "manual_fix",
@@ -85,7 +85,7 @@ def lint_alignment_map(
             # Check line range is valid
             if block.lines.end > line_count:
                 fixes.append({
-                    "file": str(mapping.file_path),
+                    "file": str(mapping.file),
                     "block": block.name,
                     "issue": "invalid_lines",
                     "old_lines": str(block.lines),
@@ -99,14 +99,14 @@ def lint_alignment_map(
             # Check for line drift using AST
             new_lines = detect_line_drift(
                 project_root,
-                mapping.file_path,
+                mapping.file,
                 block.name,
                 block.lines,
             )
 
             if new_lines is not None and new_lines != block.lines:
                 fixes.append({
-                    "file": str(mapping.file_path),
+                    "file": str(mapping.file),
                     "block": block.name,
                     "issue": "line_drift",
                     "old_lines": str(block.lines),
@@ -131,7 +131,7 @@ def lint_alignment_map(
                 # Check doc exists
                 if not doc_path.exists():
                     fixes.append({
-                        "file": str(mapping.file_path),
+                        "file": str(mapping.file),
                         "block": block.name,
                         "issue": "missing_anchor",
                         "aligned_ref": aligned_ref,
@@ -146,7 +146,7 @@ def lint_alignment_map(
                     section = extract_document_section(doc_path, anchor)
                     if section is None:
                         fixes.append({
-                            "file": str(mapping.file_path),
+                            "file": str(mapping.file),
                             "block": block.name,
                             "issue": "missing_anchor",
                             "aligned_ref": aligned_ref,
@@ -199,7 +199,7 @@ def detect_line_drift(
         if node_name == target_name:
             start_line = node.lineno
             end_line = find_ast_node_end(node)
-            actual_lines = LineRange(start_line, end_line)
+            actual_lines = LineRange(start=start_line, end=end_line)
 
             # Return actual lines if different from expected
             if actual_lines.start != expected_lines.start or actual_lines.end != expected_lines.end:
@@ -215,7 +215,7 @@ def detect_line_drift(
                     if item.name == target_name:
                         start_line = item.lineno
                         end_line = find_ast_node_end(item)
-                        actual_lines = LineRange(start_line, end_line)
+                        actual_lines = LineRange(start=start_line, end=end_line)
 
                         if actual_lines.start != expected_lines.start or actual_lines.end != expected_lines.end:
                             return actual_lines

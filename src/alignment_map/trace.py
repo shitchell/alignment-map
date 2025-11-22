@@ -10,7 +10,7 @@ from rich.table import Table
 from rich.text import Text
 
 from .models import AlignmentMap, Block, CheckResult, DocumentSection, FileMapping
-from .parser import extract_document_section, get_document_last_reviewed, parse_alignment_map
+from .parser import extract_document_section, get_document_last_reviewed
 
 
 def trace_file_location(

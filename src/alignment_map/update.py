@@ -12,7 +12,6 @@ from rich.prompt import Confirm, Prompt
 from rich.text import Text
 
 from .models import AlignmentMap, Block, LineRange
-from .parser import parse_alignment_map
 
 
 OverlapStrategy = Literal["extend", "split", "replace"]
@@ -37,7 +36,7 @@ def update_block(
 
     # Parse existing map
     try:
-        alignment_map = parse_alignment_map(map_path)
+        alignment_map = AlignmentMap.load(map_path)
     except Exception as e:
         console.print(f"[red]Error parsing alignment map: {e}[/red]")
         return False, None, None
@@ -263,7 +262,7 @@ def apply_extend_strategy(
     # Calculate extended range
     new_start = min(existing_block.lines.start, lines.start)
     new_end = max(existing_block.lines.end, lines.end)
-    extended_range = LineRange(new_start, new_end)
+    extended_range = LineRange(start=new_start, end=new_end)
 
     # Update the YAML file
     with open(map_path) as f:
@@ -316,7 +315,7 @@ def apply_split_strategy(
     if existing_block.lines.start < lines.start:
         splits.append({
             "name": f"{existing_block.name} (part 1)",
-            "lines": LineRange(existing_block.lines.start, lines.start - 1),
+            "lines": LineRange(start=existing_block.lines.start, end=lines.start - 1),
             "aligned_with": existing_block.aligned_with,
         })
 
@@ -331,7 +330,7 @@ def apply_split_strategy(
     if existing_block.lines.end > lines.end:
         splits.append({
             "name": f"{existing_block.name} (part 2)",
-            "lines": LineRange(lines.end + 1, existing_block.lines.end),
+            "lines": LineRange(start=lines.end + 1, end=existing_block.lines.end),
             "aligned_with": existing_block.aligned_with,
         })
 

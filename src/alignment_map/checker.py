@@ -5,12 +5,12 @@ from pathlib import Path
 
 from .git import get_staged_changes, is_file_staged
 from .models import AlignmentMap, Block, CheckFailure, CheckResult, FileChange
-from .parser import extract_document_section, get_document_last_reviewed, parse_alignment_map
+from .parser import extract_document_section, get_document_last_reviewed
 
 
 def check_staged_changes(project_root: Path, map_path: Path) -> list[CheckFailure]:
     """Check all staged changes for alignment issues."""
-    alignment_map = parse_alignment_map(map_path)
+    alignment_map = AlignmentMap.load(map_path)
     staged_changes = get_staged_changes(project_root)
     failures: list[CheckFailure] = []
 

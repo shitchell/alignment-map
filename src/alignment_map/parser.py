@@ -1,4 +1,8 @@
-"""Parsers for alignment map and markdown documents."""
+"""Parsers for markdown documents.
+
+Note: parse_alignment_map() and parse_datetime() have been removed.
+Use AlignmentMap.load() from models.py instead.
+"""
 
 import re
 from datetime import datetime
@@ -6,76 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from .models import AlignmentMap, Block, DocumentSection, FileMapping, LineRange
-
-
-def parse_alignment_map(map_path: Path) -> AlignmentMap:
-    """Parse the alignment map YAML file."""
-    with open(map_path) as f:
-        data = yaml.safe_load(f)
-
-    version = data.get("version", 1)
-
-    # Parse hierarchy
-    hierarchy = data.get("hierarchy", {})
-    requires_human = hierarchy.get("requires_human", [])
-    technical = hierarchy.get("technical", [])
-
-    # Parse settings
-    settings = data.get("settings", {})
-
-    # Parse mappings
-    mappings: list[FileMapping] = []
-    for mapping_data in data.get("mappings", []):
-        file_path = Path(mapping_data["file"])
-        blocks: list[Block] = []
-
-        for block_data in mapping_data.get("blocks", []):
-            block = Block(
-                name=block_data["name"],
-                lines=LineRange.from_string(block_data["lines"]),
-                last_updated=parse_datetime(block_data.get("last_updated")),
-                last_update_comment=block_data.get("last_update_comment"),
-                last_reviewed=parse_datetime(block_data.get("last_reviewed")),
-                aligned_with=block_data.get("aligned_with", []),
-                block_id=block_data.get("id"),
-            )
-            blocks.append(block)
-
-        mappings.append(FileMapping(file_path=file_path, blocks=blocks))
-
-    return AlignmentMap(
-        version=version,
-        mappings=mappings,
-        requires_human=requires_human,
-        technical=technical,
-        settings=settings,
-    )
-
-
-def parse_datetime(value: str | datetime | None) -> datetime | None:
-    """Parse an ISO 8601 datetime string or return existing datetime."""
-    if value is None:
-        return None
-    # PyYAML auto-converts ISO 8601 strings to datetime objects
-    if isinstance(value, datetime):
-        return value
-    # Normalize the string
-    normalized = value.replace("Z", "").split("+")[0]
-    # Remove microseconds if present for simpler parsing
-    if "." in normalized:
-        normalized = normalized.split(".")[0]
-    # Handle various datetime formats
-    for fmt in [
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%d %H:%M:%S",  # Python's datetime.__str__() format
-        "%Y-%m-%d",
-    ]:
-        try:
-            return datetime.strptime(normalized, fmt)
-        except ValueError:
-            continue
-    raise ValueError(f"Unable to parse datetime: {value}")
+from .models import DocumentSection
 
 
 def extract_document_section(doc_path: Path, anchor: str) -> DocumentSection | None:
@@ -141,16 +76,44 @@ def extract_last_reviewed(content: str) -> datetime | None:
         try:
             frontmatter = yaml.safe_load(frontmatter_match.group(1))
             if frontmatter and "last_reviewed" in frontmatter:
-                return parse_datetime(frontmatter["last_reviewed"])
+                return _parse_datetime(frontmatter["last_reviewed"])
         except yaml.YAMLError:
             pass
 
     # Check HTML comment
     comment_match = re.search(r"<!--\s*last_reviewed:\s*([^\s]+)\s*-->", content)
     if comment_match:
-        return parse_datetime(comment_match.group(1))
+        return _parse_datetime(comment_match.group(1))
 
     return None
+
+
+def _parse_datetime(value: str | datetime | None) -> datetime | None:
+    """Parse an ISO 8601 datetime string or return existing datetime.
+
+    Internal helper function for parsing datetime values.
+    """
+    if value is None:
+        return None
+    # PyYAML auto-converts ISO 8601 strings to datetime objects
+    if isinstance(value, datetime):
+        return value
+    # Normalize the string
+    normalized = value.replace("Z", "").split("+")[0]
+    # Remove microseconds if present for simpler parsing
+    if "." in normalized:
+        normalized = normalized.split(".")[0]
+    # Handle various datetime formats
+    for fmt in [
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",  # Python's datetime.__str__() format
+        "%Y-%m-%d",
+    ]:
+        try:
+            return datetime.strptime(normalized, fmt)
+        except ValueError:
+            continue
+    raise ValueError(f"Unable to parse datetime: {value}")
 
 
 def get_document_last_reviewed(doc_path: Path) -> datetime | None:

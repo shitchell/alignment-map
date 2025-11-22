@@ -9,7 +9,6 @@ from rich.panel import Panel
 from rich.tree import Tree
 
 from .models import AlignmentMap
-from .parser import parse_alignment_map
 
 
 def generate_graph(
@@ -22,7 +21,7 @@ def generate_graph(
 
     # Parse alignment map
     try:
-        alignment_map = parse_alignment_map(map_path)
+        alignment_map = AlignmentMap.load(map_path)
     except Exception as e:
         if output_format == "json":
             return {"error": "map_parse_error", "message": str(e)}
@@ -53,15 +52,15 @@ def build_graph_data(alignment_map: AlignmentMap) -> dict[str, Any]:
     for mapping in alignment_map.mappings:
         file_id = f"file_{next_id}"
         next_id += 1
-        node_ids[str(mapping.file_path)] = file_id
+        node_ids[str(mapping.file)] = file_id
 
         nodes.append({
             "id": file_id,
-            "label": str(mapping.file_path),
+            "label": str(mapping.file),
             "type": "file",
-            "is_code": str(mapping.file_path).startswith("src/"),
-            "is_doc": str(mapping.file_path).endswith(".md"),
-            "requires_human": alignment_map.is_human_required(str(mapping.file_path)),
+            "is_code": str(mapping.file).startswith("src/"),
+            "is_doc": str(mapping.file).endswith(".md"),
+            "requires_human": alignment_map.is_human_required(str(mapping.file)),
         })
 
         # Add blocks as child nodes
@@ -70,7 +69,7 @@ def build_graph_data(alignment_map: AlignmentMap) -> dict[str, Any]:
             next_id += 1
 
             # Store block ID for edge creation
-            block_key = f"{mapping.file_path}#{block.block_id or block.name}"
+            block_key = f"{mapping.file}#{block.id or block.name}"
             node_ids[block_key] = block_id
 
             nodes.append({

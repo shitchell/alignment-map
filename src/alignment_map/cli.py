@@ -313,10 +313,10 @@ def trace(file_spec: str | None, output_json: bool, mapfile: Path | None) -> Non
         file_path_str = file_spec
         line_number = None
 
-    from .parser import parse_alignment_map
+    from .models import AlignmentMap
     from .trace import trace_file_location
 
-    alignment_map = parse_alignment_map(map_path)
+    alignment_map = AlignmentMap.load(map_path)
     result = trace_file_location(
         project_root,
         alignment_map,
