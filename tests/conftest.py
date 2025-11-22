@@ -152,7 +152,7 @@ def create_test_project(
     # Initial commit
     subprocess.run(["git", "add", "."], cwd=repo_path, check=True, capture_output=True)
     subprocess.run(
-        ["git", "commit", "-m", "Initial commit"],
+        ["git", "-c", "commit.gpgsign=false", "commit", "-m", "Initial commit"],
         cwd=repo_path,
         check=True,
         capture_output=True,
