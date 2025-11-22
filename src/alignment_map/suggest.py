@@ -3,13 +3,13 @@
 import ast
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Union
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from .models import AlignmentMap, LineRange
+from .models import AlignmentMap, Block, LineRange
 
 
 class BlockSuggestion:
@@ -111,7 +111,7 @@ def find_unmapped_files(project_root: Path, alignment_map: AlignmentMap) -> list
 
 
 def suggest_python_blocks(
-    file_path: Path, existing_blocks: list
+    file_path: Path, existing_blocks: list[Any]
 ) -> list[BlockSuggestion]:
     """Suggest blocks for a Python file using AST parsing."""
     suggestions = []
@@ -183,19 +183,23 @@ def suggest_python_blocks(
 
 def find_ast_node_end(node: ast.AST) -> int:
     """Find the end line of an AST node."""
-    end_line = node.lineno
+    # Get start line if available
+    lineno = getattr(node, "lineno", 1)
+    end_line: int = lineno if isinstance(lineno, int) else 1
 
     for child in ast.walk(node):
-        if hasattr(child, "lineno"):
-            end_line = max(end_line, child.lineno)
-        if hasattr(child, "end_lineno") and child.end_lineno:
-            end_line = max(end_line, child.end_lineno)
+        child_lineno = getattr(child, "lineno", None)
+        if child_lineno is not None and isinstance(child_lineno, int):
+            end_line = max(end_line, child_lineno)
+        child_end_lineno = getattr(child, "end_lineno", None)
+        if child_end_lineno is not None and isinstance(child_end_lineno, int):
+            end_line = max(end_line, child_end_lineno)
 
     return end_line
 
 
 def suggest_python_blocks_fallback(
-    file_path: Path, existing_blocks: list
+    file_path: Path, existing_blocks: list[Any]
 ) -> list[BlockSuggestion]:
     """Fallback pattern-based suggestion for Python files."""
     suggestions = []
@@ -278,7 +282,7 @@ def suggest_python_blocks_fallback(
     return suggestions
 
 
-def suggest_generic_blocks(file_path: Path, existing_blocks: list) -> list[BlockSuggestion]:
+def suggest_generic_blocks(file_path: Path, existing_blocks: list[Any]) -> list[BlockSuggestion]:
     """Suggest blocks for non-Python files using generic patterns."""
     suggestions = []
     lines = file_path.read_text().split("\n")
@@ -366,7 +370,7 @@ def get_patterns_for_extension(extension: str) -> list[dict[str, Any]]:
 
 
 def overlaps_with_existing(
-    suggestion: BlockSuggestion, existing_blocks: list
+    suggestion: BlockSuggestion, existing_blocks: list[Any]
 ) -> bool:
     """Check if a suggestion overlaps with existing blocks."""
     for block in existing_blocks:

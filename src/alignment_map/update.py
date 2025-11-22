@@ -75,12 +75,13 @@ def update_block(
         if "mappings" not in map_data:
             map_data["mappings"] = []
 
+        last_updated_str = new_block.last_updated.isoformat() if new_block.last_updated else datetime.now().isoformat()
         map_data["mappings"].append({
             "file": str(file_path),
             "blocks": [{
                 "name": new_block.name,
                 "lines": str(new_block.lines),
-                "last_updated": new_block.last_updated.isoformat(),
+                "last_updated": last_updated_str,
                 "last_update_comment": new_block.last_update_comment,
                 "aligned_with": new_block.aligned_with,
             }],
@@ -185,13 +186,10 @@ def handle_block_overlap(
         return apply_split_strategy(
             map_path, file_path, block_name, lines, aligned_with, comment, overlapping_blocks[0]
         )
-    elif strategy == "replace":
+    else:  # strategy == "replace"
         return apply_replace_strategy(
             map_path, file_path, block_name, lines, aligned_with, comment, overlapping_blocks[0]
         )
-    else:
-        console.print(f"[red]Invalid strategy: {strategy}[/red]")
-        return False, None, None
 
 
 def suggest_overlap_strategy(
@@ -230,7 +228,7 @@ def get_strategy_explanation(
             f"Lines {lines} partially overlap with {blocks[0].lines}.\n"
             "Splitting allows you to create a more granular mapping."
         )
-    elif strategy == "replace":
+    else:  # strategy == "replace"
         if len(blocks) > 1:
             return (
                 f"Lines {lines} overlap with multiple blocks.\n"
@@ -241,7 +239,6 @@ def get_strategy_explanation(
                 f"Lines {lines} completely contain {blocks[0].lines}.\n"
                 "Replacing will update the block boundaries."
             )
-    return ""
 
 
 def apply_extend_strategy(

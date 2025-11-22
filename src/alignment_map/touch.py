@@ -147,7 +147,7 @@ def find_block_current_location(
             node_name = node.name
 
         if node_name == target_name:
-            start_line = node.lineno
+            start_line = node.lineno  # type: ignore[attr-defined]
             end_line = find_ast_node_end(node)
             return LineRange(start=start_line, end=end_line)
 

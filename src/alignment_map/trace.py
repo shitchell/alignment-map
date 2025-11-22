@@ -81,7 +81,7 @@ def collect_trace_data(
     blocks: list[Block],
 ) -> dict[str, Any]:
     """Collect all trace data for the given blocks."""
-    trace_data = {
+    trace_data: dict[str, Any] = {
         "file": str(file_path),
         "blocks": [],
         "aligned_documents": [],
@@ -183,11 +183,11 @@ def build_document_hierarchy(
     project_root: Path,
     alignment_map: AlignmentMap,
     aligned_docs: list[dict[str, Any]],
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """Build the document hierarchy from aligned docs up to identity."""
-    hierarchy = []
+    hierarchy: list[dict[str, Any]] = []
     docs_to_trace = set(doc["path"] for doc in aligned_docs)
-    docs_traced = set()
+    docs_traced: set[str] = set()
 
     while docs_to_trace:
         current_doc = docs_to_trace.pop()

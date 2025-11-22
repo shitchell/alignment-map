@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
@@ -40,7 +41,7 @@ class LineRange(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def parse_string(cls, data):
+    def parse_string(cls, data: str | dict[str, int]) -> dict[str, int]:
         """Parse '10-50' format."""
         if isinstance(data, str):
             parts = data.split("-")
@@ -50,7 +51,7 @@ class LineRange(BaseModel):
         return data
 
     @model_validator(mode="after")
-    def validate_range(self):
+    def validate_range(self) -> "LineRange":
         if self.end < self.start:
             raise ValueError(f"end ({self.end}) must be >= start ({self.start})")
         return self
@@ -165,12 +166,12 @@ class FileMapping(BaseModel):
         if new_comment:
             block.last_update_comment = new_comment
 
-    def validate_against_file(self, project_root: Path) -> list[dict]:
+    def validate_against_file(self, project_root: Path) -> list[dict[str, str | list[str]]]:
         """Validate this mapping against actual files.
 
         Returns list of issues found.
         """
-        issues = []
+        issues: list[dict[str, str | list[str]]] = []
         full_path = project_root / self.file
 
         if not full_path.exists():
@@ -254,9 +255,9 @@ class AlignmentMap(BaseModel):
         with open(path, "w") as f:
             yaml.dump(data, f, default_flow_style=False, sort_keys=False)
 
-    def _serialize_for_yaml(self) -> dict:
+    def _serialize_for_yaml(self) -> dict[str, Any]:
         """Serialize to dict with LineRange as strings."""
-        data = self.model_dump(exclude={"_project_root"})
+        data: dict[str, Any] = self.model_dump(exclude={"_project_root"})
         # Convert LineRange objects to strings and Path to str
         for mapping in data.get("mappings", []):
             # Convert file path to string
@@ -344,12 +345,12 @@ class AlignmentMap(BaseModel):
 
     # --- Orchestrator methods (use stored project_root) ---
 
-    def lint(self) -> list[dict]:
+    def lint(self) -> list[dict[str, Any]]:
         """Lint the alignment map against the project.
 
         Returns list of all issues found.
         """
-        issues = []
+        issues: list[dict[str, Any]] = []
 
         for mapping in self.mappings:
             issues.extend(mapping.validate_against_file(self.project_root))
@@ -367,9 +368,9 @@ class AlignmentMap(BaseModel):
 
     def _validate_aligned_ref(
         self, file_path: Path, block: Block, aligned_ref: str
-    ) -> list[dict]:
+    ) -> list[dict[str, str]]:
         """Validate a single aligned reference."""
-        issues = []
+        issues: list[dict[str, str]] = []
 
         # Parse reference
         if "#" in aligned_ref:

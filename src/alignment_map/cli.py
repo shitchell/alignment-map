@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Literal
 
 import click
 
@@ -225,6 +226,11 @@ mappings: []
         click.echo(f"Error: Invalid line range format: {e}", err=True)
         sys.exit(2)
 
+    # Cast strategy to the expected Literal type
+    strategy_typed: Literal["extend", "split", "replace"] | None = None
+    if strategy in ("extend", "split", "replace"):
+        strategy_typed = strategy  # type: ignore[assignment]
+
     success, final_lines, final_aligned = update_block(
         project_root,
         map_path,
@@ -233,7 +239,7 @@ mappings: []
         line_range,
         list(aligned_with),
         comment,
-        strategy,
+        strategy_typed,
     )
 
     # Print trace if successful

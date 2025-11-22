@@ -1,12 +1,18 @@
 """Output formatting for alignment check results."""
 
+from __future__ import annotations
+
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
 from .models import CheckFailure, CheckResult, LineRange
+
+if TYPE_CHECKING:
+    from .models import AlignmentMap
 
 console = Console()
 
@@ -163,8 +169,8 @@ def print_human_escalation(failures: list[CheckFailure]) -> None:
 
 def print_manual_fix_context(
     project_root: Path,
-    alignment_map: "AlignmentMap",
-    fix: dict,
+    alignment_map: AlignmentMap,
+    fix: dict[str, Any],
 ) -> None:
     """Print context-rich output for a manual fix."""
     from .trace import build_document_hierarchy
@@ -245,7 +251,7 @@ def print_manual_fix_context(
     console.print("\n[dim]-------------------------------[/dim]\n")
 
 
-def _print_fix_instructions(fix: dict) -> None:
+def _print_fix_instructions(fix: dict[str, Any]) -> None:
     """Print specific instructions based on fix type."""
     issue = fix.get('issue', '')
 
@@ -278,9 +284,9 @@ def _print_fix_instructions(fix: dict) -> None:
 
 
 def print_lint_summary(
-    fixes: list[dict],
+    fixes: list[dict[str, Any]],
     applied: list[str] | None = None,
-    skipped: list[dict] | None = None,
+    skipped: list[dict[str, Any]] | None = None,
 ) -> None:
     """Print a summary of lint results."""
     if not fixes:

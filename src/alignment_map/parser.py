@@ -53,7 +53,7 @@ def extract_document_section(doc_path: Path, anchor: str) -> DocumentSection | N
     end_idx = len(lines)
     for i in range(start_idx + 1, len(lines)):
         match = re.match(r"^(#{1,6})\s+", lines[i])
-        if match and len(match.group(1)) <= header_level:
+        if match and header_level is not None and len(match.group(1)) <= header_level:
             end_idx = i
             break
 

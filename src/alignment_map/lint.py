@@ -3,11 +3,12 @@
 import ast
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import yaml
 from rich.console import Console
 
-from .models import AlignmentMap, LineRange, OverlapError
+from .models import AlignmentMap, Block, LineRange, OverlapError
 from .parser import extract_document_section
 from .suggest import find_ast_node_end
 from .touch import extract_target_name
@@ -16,7 +17,7 @@ from .touch import extract_target_name
 def lint_alignment_map(
     project_root: Path,
     map_path: Path,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Lint the alignment map and return list of issues with fixes.
 
     Returns a list of fix dictionaries with the following structure:
@@ -32,7 +33,7 @@ def lint_alignment_map(
         "reason": str,         # Reason for manual fix (if manual)
     }
     """
-    fixes: list[dict] = []
+    fixes: list[dict[str, Any]] = []
 
     # Parse the alignment map
     try:
@@ -56,7 +57,7 @@ def lint_alignment_map(
 
         # Check if file exists
         if not file_path.exists():
-            fix = {
+            fix: dict[str, Any] = {
                 "file": str(mapping.file),
                 "block": "",
                 "issue": "missing_file",
@@ -70,7 +71,7 @@ def lint_alignment_map(
                 fix["action"] = "manual"
                 fix["reason"] = f"Has {len(refs)} orphaned reference(s)"
                 fix["orphaned_refs"] = [
-                    f"{path}:{block.name}" for path, block in refs
+                    f"{path}:{block_ref.name}" for path, block_ref in refs
                 ]
             else:
                 fix["action"] = "auto"
@@ -99,7 +100,7 @@ def lint_alignment_map(
         for block in mapping.blocks:
             # Check line range is valid
             if block.lines.end > line_count:
-                fix = {
+                fix_invalid: dict[str, Any] = {
                     "file": str(mapping.file),
                     "block": block.name,
                     "issue": "invalid_lines",
@@ -113,16 +114,16 @@ def lint_alignment_map(
                 refs = alignment_map.get_all_references_to(f"{mapping.file}#{block.name}")
 
                 if has_alignments or refs:
-                    fix["action"] = "manual"
-                    fix["reason"] = "Block has dependencies"
+                    fix_invalid["action"] = "manual"
+                    fix_invalid["reason"] = "Block has dependencies"
                     if block.aligned_with:
-                        fix["aligns_with"] = block.aligned_with
+                        fix_invalid["aligns_with"] = list(block.aligned_with)
                     if refs:
-                        fix["referenced_by"] = [f"{p}:{b.name}" for p, b in refs]
+                        fix_invalid["referenced_by"] = [f"{p}:{b.name}" for p, b in refs]
                 else:
-                    fix["action"] = "auto"
+                    fix_invalid["action"] = "auto"
 
-                fixes.append(fix)
+                fixes.append(fix_invalid)
                 # Don't check for line drift if lines are already invalid
                 continue
 
@@ -147,14 +148,14 @@ def lint_alignment_map(
 
                 # Check if update would cause overlap
                 would_overlap = False
-                overlap_with = None
+                overlap_with: Block | None = None
                 for other in mapping.blocks:
                     if other.name != block.name and new_lines.overlaps(other.lines):
                         would_overlap = True
                         overlap_with = other
                         break
 
-                if would_overlap:
+                if would_overlap and overlap_with is not None:
                     fix["action"] = "manual"
                     fix["reason"] = "Would overlap with existing block"
                     fix["overlap_with"] = f"{overlap_with.name} ({overlap_with.lines})"
@@ -246,7 +247,7 @@ def detect_line_drift(
             node_name = node.name
 
         if node_name == target_name:
-            start_line = node.lineno
+            start_line = node.lineno  # type: ignore[attr-defined]
             end_line = find_ast_node_end(node)
             actual_lines = LineRange(start=start_line, end=end_line)
 
@@ -277,7 +278,7 @@ def detect_line_drift(
 
 def write_fixes_file(
     fixes_path: Path,
-    fixes: list[dict],
+    fixes: list[dict[str, Any]],
 ) -> None:
     """Write fixes to .alignment-map.fixes file."""
     fixes_data = {
@@ -293,7 +294,7 @@ def apply_fixes_file(
     project_root: Path,
     map_path: Path,
     fixes_path: Path,
-) -> tuple[list[str], list[dict]]:
+) -> tuple[list[str], list[dict[str, Any]]]:
     """Apply auto fixes from .alignment-map.fixes and return results.
 
     Returns a tuple of:
@@ -302,7 +303,7 @@ def apply_fixes_file(
     """
     console = Console()
     actions_taken: list[str] = []
-    skipped_manual: list[dict] = []
+    skipped_manual: list[dict[str, Any]] = []
 
     # Load fixes file
     with open(fixes_path) as f:
