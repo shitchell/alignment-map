@@ -15,6 +15,7 @@ settings:
   respect_gitignore: true
   ignore:
     - "**/tests/**"  # Test files don't require alignment mapping
+    - ".gitignore"
 
 mappings:
   # === Core Models ===
