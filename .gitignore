@@ -56,3 +56,8 @@ Thumbs.db
 
 # Alignment Map
 .alignment-map.fixes
+
+# Work dirs
+/_todo
+/_archive
+/_work
